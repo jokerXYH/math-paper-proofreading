@@ -112,6 +112,38 @@ def main():
     check("5b HTML 图片 base64 内嵌", "data:image/png;base64," in html)
     check("5c 统计正确（4错误/4提示）", "错误 4 处" in html and "提示 4 处" in html, html[:500])
 
+    # ---- 6) align_answers（P1-6 答案分离对齐）----
+    ans_txt = os.path.join(OUT, "answers_sample.txt")
+    open(ans_txt, "w", encoding="utf-8").write(
+        "1. 231\n2. B（2）\n3. B（19）\n5. 10、8/3、2/9\n99. 多余答案\n")
+    r = run([py, os.path.join(HERE, "align_answers.py"), pdf, ans_txt,
+             "-o", os.path.join(OUT, "align")])
+    check("6a 答案分离对齐（配对4/多余1）",
+          "已配对: 4" in r.stdout and "多余答案: 1" in r.stdout, r.stdout[-300:])
+
+    # ---- 7) 第二解题者（P1-7 任务生成+比对）----
+    r = run([py, os.path.join(HERE, "make_solver_tasks.py"),
+             os.path.join(cut, "questions.json"), "-o", os.path.join(OUT, "tasks")])
+    ntask = len([f for f in os.listdir(os.path.join(OUT, "tasks")) if f.startswith("task_")]) \
+        if os.path.isdir(os.path.join(OUT, "tasks")) else 0
+    check("7a 盲解任务书生成（5份）", ntask == 5, f"实际 {ntask}")
+    off_p = os.path.join(OUT, "official.json")
+    sol_p = os.path.join(OUT, "solver.json")
+    open(off_p, "w", encoding="utf-8").write('{"1":"231","2":"B(2)","3":"B(19)","5":"8/3、2/9、10"}')
+    open(sol_p, "w", encoding="utf-8").write('{"1":"231","2":"B(2)","3":"D","5":"10、8/3、2/9"}')
+    r = run([py, os.path.join(HERE, "compare_answers.py"),
+             "--official", off_p, "--solver", sol_p, "-o", os.path.join(OUT, "cmp")])
+    check("7b 盲解比对（1处不一致→存疑）",
+          "不一致 1" in r.stdout and "题3" in r.stdout, r.stdout[-300:])
+
+    # ---- 8) typo_scan（P1-8 错别字筛查）----
+    r = run([py, os.path.join(HERE, "typo_scan.py"), pdf, "-o", os.path.join(OUT, "typo")])
+    cand = os.path.join(OUT, "typo", "typo_candidates.json")
+    prompt = os.path.join(OUT, "typo", "llm_review_prompt.md")
+    cand_txt = open(cand, encoding="utf-8").read() if os.path.exists(cand) else ""
+    check("8a 筛查到『变化而变』（高）", "变化而变" in cand_txt and "高 1" in r.stdout, r.stdout[:400])
+    check("8b 生成 LLM 通读提示词", os.path.exists(prompt))
+
     # ---- 汇总 ----
     print("\n" + "=" * 60)
     fails = [n for n, ok, _ in results if not ok]

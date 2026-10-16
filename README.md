@@ -9,7 +9,9 @@
 | 能力 | 说明 |
 |---|---|
 | 🔍 **模式A（纯题目）** | 检查题干文字（错字/漏字/标点）、题号链（重复/跳号/乱序）、图文一致性、可解性、页结构（空白页/缺标题） |
-| ✅ **模式B（含答案）** | 在模式A基础上逐题独立复算 + Python 程序验证 + 菁优网/学科网原题比对，判定：答案错误 / 答案不全 / 过程错误 / 存疑 |
+| ✅ **模式B（含答案）** | 在模式A基础上逐题独立复算 + Python 程序验证 + **盲解交叉验证（第二解题者）** + 菁优网/学科网原题比对，判定：答案错误 / 答案不全 / 过程错误 / 存疑 |
+| 🧩 **答案分离对齐** | 题目 PDF 与答案 PDF/TXT 分开时，按题号自动配对，先暴露"缺答案/多余答案" |
+| 🔤 **错别字自动筛查** | 规则引擎高召回（错字表/叠字/标点/括号配对/数列加号）+ 生成 LLM 通读提示词（语义漏字交给模型） |
 | 🖍️ **可视化批注** | 红框 + 红字**直接写进 PDF 内容层**（任何阅读器/打印可见）：错在哪、正确答案是什么 |
 | 📊 **可视化报告** | 单文件 HTML 报告：每题一张卡（题目小图 + 错因 + 正确答案 + 依据），图片 base64 内嵌，可直接发人 |
 | 📏 **判定纪律** | **多解/答案不唯一 ≠ 错误**：只标🔵提示（蓝）；只有题目真错、答案真错、答案不全才标🔴（红） |
@@ -18,17 +20,18 @@
 
 ```
 PDF ──extract/cut──► 每题小图 + 文本 + 题号链诊断
-                         │
+                         │（答案在另一个文件？align_answers 先配对）
               ┌──────────┴──────────┐
         模式A(纯题目)            模式B(带答案)
-        题干/题号/图文/可解性      + 手推 + 程序验证 + 原题比对
+        题干/题号/图文/可解性      + 手推 + 程序验证 + 盲解交叉验证 + 原题比对
+        + typo_scan 错别字候选         （compare_answers：不一致→存疑）
               └──────────┬──────────┘
                           ▼
         分级汇总(🔴错误/🟠存疑/🔵提示) ──► locate 定位 ──► 批注 PDF
                           ▼
               make_report ──► 报告.md + 报告.html
                           ▼
-              run_regression ──► 改脚本后一键回归
+              run_regression ──► 改脚本后一键回归（17项）
 ```
 
 ## 安装
@@ -54,16 +57,26 @@ python scripts/extract_pdf.py 试卷.pdf -o 输出 --dpi 160
 # 2) 题目级切图（逐题核对主力；跨页题自动拼接）
 python scripts/cut_questions.py 试卷.pdf -o 输出/cut --merge
 
-# 3) 批注定位（关键词→坐标，免手填）
+# 3) 答案在另一个文件？先自动配对
+python scripts/align_answers.py 试卷.pdf 答案.pdf -o 输出/align
+
+# 4) 错别字筛查（候选需回图复核）；llm_review_prompt.md 交给模型做语义通读
+python scripts/typo_scan.py 试卷.pdf -o 输出/typo
+
+# 5) 盲解交叉验证：生成任务书 → subagent/另一个模型盲解 → 比对
+python scripts/make_solver_tasks.py 输出/cut/questions.json -o 输出/tasks
+python scripts/compare_answers.py --official 官方.json --solver solver_answers.json -o 输出/cmp
+
+# 6) 批注定位（关键词→坐标，免手填）
 python scripts/locate.py 试卷.pdf "变化而变" --page 3 --color red
 
-# 4) 生成批注版 PDF（自动做宽度/越界/遮挡三重检查）
+# 7) 生成批注版 PDF（自动做宽度/越界/遮挡三重检查）
 python scripts/draw_annotations.py --src 试卷.pdf --spec spec.json --dst 批注版.pdf --check-dir check
 
-# 5) 生成报告（markdown + 单文件 HTML）
+# 8) 生成报告（markdown + 单文件 HTML）
 python scripts/make_report.py results.json -o 报告目录
 
-# 6) 自测（可选：提供任意一份试卷跑全流程回归）
+# 9) 自测（可选：提供任意一份试卷跑全流程回归）
 python scripts/run_regression.py --pdf 一份测试卷.pdf
 ```
 
@@ -73,11 +86,15 @@ python scripts/run_regression.py --pdf 一份测试卷.pdf
 |---|---|
 | `extract_pdf.py` | 文本层提取 + 逐页渲染 + 题号链诊断 + 区域裁剪 |
 | `cut_questions.py` | **题目级自动切图**：题号锚定 + 几何并集 + 跨页题合并 |
+| `align_answers.py` | **答案分离对齐**：题目 PDF + 答案 PDF/TXT 按题号自动配对 |
 | `locate.py` | **批注定位助手**：关键词 → 坐标 → spec JSON 片段 |
 | `draw_annotations.py` | 批注引擎：画入 PDF 内容层；宽度/越界/遮挡三重检查 |
 | `make_report.py` | 报告生成：markdown + 单文件 HTML（图片内嵌） |
+| `make_solver_tasks.py` | **盲解任务生成**：把题目打包成盲解任务书（防自证偏差） |
+| `compare_answers.py` | **盲解比对**：与官方答案交叉验证，不一致自动列"存疑" |
+| `typo_scan.py` | **错别字筛查**：规则高召回 + LLM 通读提示词 |
 | `verify_examples.py` | 6 类常考题的程序化验证模板（程序框图/数位整除/周期/集合/公式…） |
-| `run_regression.py` | 12 项断言回归测试 |
+| `run_regression.py` | 17 项断言回归测试 |
 
 ## 判定标准（关键）
 

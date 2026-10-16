@@ -28,10 +28,10 @@ description: 校对初中数学试卷/讲义/练习的题目与答案（支持 P
 ```
 Task Progress:
 - [ ] 1. 识别文档：extract_pdf.py（文本+逐页图）→ cut_questions.py（每题小图）
-- [ ] 2. 判断模式：搜"答案/解析/参考答案"；无答案＝模式A，含答案＝模式B
+- [ ] 2. 判断模式：搜"答案/解析/参考答案"；无答案＝模式A，含答案＝模式B（答案分离在另一文件？先 align_answers.py 配对）
 - [ ] 3. 拆题建清单：题号、页码、是否含答案、题型（cut_questions 输出）
-- [ ] 4A. 模式A检查：题号系统 + 题干逐字 + 图文一致 + 可解性（自己当学生做一遍）
-- [ ] 4B. 模式B验证：逐题手推 → 程序验证 → 菁优网/原题比对
+- [ ] 4A. 模式A检查：题号系统 + 题干逐字（typo_scan 候选+回图复核）+ 图文一致 + 可解性
+- [ ] 4B. 模式B验证：逐题手推 → 程序验证 → 盲解交叉验证 → 菁优网/原题比对
 - [ ] 5. 分级汇总：🔴错误 / 🟠存疑 / 🔵提示 / ✅通过
 - [ ] 6. 可视化：locate.py 定位 → draw_annotations.py 出批注版 PDF + 检查图
 - [ ] 7. 报告：make_report.py 出 markdown + 单文件 HTML 报告，预览给用户
@@ -52,6 +52,12 @@ python scripts/cut_questions.py 试卷.pdf -o 输出目录/cut --merge    # 题�
 
 - 搜全文关键词：`答案`、`参考答案`、`解析`、`【答案】`。
 - 注意混合文档：题目中有个别答案、或答案在最后几页。
+- **答案与题目分离在两个文件**（题目 PDF + 答案 PDF/TXT）时，先自动配对：
+
+```bash
+python scripts/align_answers.py 题目.pdf 答案.pdf -o align
+# 输出 alignment.json（配对结果）+ report.txt（缺答案/多余答案清单，先处理这两类再核对）
+```
 
 ### 第3步：拆题建清单
 
@@ -75,19 +81,31 @@ python scripts/cut_questions.py 试卷.pdf -o 输出目录/cut --merge    # 题�
    - 是规律题设计如此（多解、开放）→ 🔵提示；
    - 明显缺条件/前后矛盾 → 🟠存疑（写明理由），严重矛盾→🔴。
 5. **页结构**：整页空白、题目被截断、选项缺失/重复、图表与被引文字跨页过远。
-6. 输出：`题号 → 问题类型 → 证据（原文截图/位置） → 修改建议`。
+6. **错别字筛查（高召回候选）**：`python scripts/typo_scan.py 试卷.pdf -o typo` —— 错字表/叠字/标点/括号配对/数列加号等规则扫描；再把 `typo/llm_review_prompt.md` 交给模型做语义通读（找漏字、病句类）。**所有候选必须回渲染图复核后才进报告**（"偶数数位""收获满满"这类是误报，已在白名单）。
+7. 输出：`题号 → 问题类型 → 证据（原文截图/位置） → 修改建议`。
 
 ### 第4B步：答案核对（模式B核心）
 
 1. **逐题独立复算（手推）**：不看文档答案，先做出自己的答案，再对照。
 2. **程序化验证**（可编程题必做）：按 references/verification-recipes.md 选择模板——枚举、模拟、周期检测、公式验证等。scripts/verify_examples.py 里有可直接改用的真实案例。
-3. **原题比对**：按 references/jyeoo-workflow.md 搜索菁优网/学科网原题与官方答案（第二证据）。
-4. **分类入表**：
+3. **盲解交叉验证（防自证偏差）**——重要题/不一致题必做：
+
+```bash
+python scripts/make_solver_tasks.py 输出/cut/questions.json -o solver_tasks
+# 把 task_XX.md 交给 subagent / 另一个模型盲解（不给它官方答案！），收集为 solver_answers.json
+python scripts/compare_answers.py --official 官方.json --solver solver_answers.json -o cmp
+```
+
+- 判定纪律：盲解与官方**不一致 → 列入🟠存疑**，人工第三遍复核后再下结论，**绝不因盲解不一致就直接判官方错**；
+- 多解答案顺序不同、B 与 B(2) 这类写法差异，比对器会自动识别为"一致"。
+
+4. **原题比对**：按 references/jyeoo-workflow.md 搜索菁优网/学科网原题与官方答案（第三证据）。
+5. **分类入表**：
    - 答案错误：给出"错在哪 + 正确答案 + 依据"；
    - 答案不全：列出完整解集（这属于答案问题！）；
    - 过程错误（答案对）：指出过程错处；
    - 题目问题：沿用模式A的判定。
-5. 记录格式：`{题号, 我的独立答案, 文档答案, 是否一致, 验证方式（自算/程序/原题）, 备注}`。
+6. 记录格式：`{题号, 我的独立答案, 文档答案, 是否一致, 验证方式（自算/程序/盲解/原题）, 备注}`。
 
 ### 第6步：可视化批注（必交付）
 
@@ -149,7 +167,7 @@ results.json 字段：
 
 ## 速查与参考（一层引用）
 
-- 工具脚本（scripts/）：`extract_pdf.py` 识别｜`cut_questions.py` 题目级切图｜`locate.py` 批注定位｜`draw_annotations.py` 批注生成（含三重检查）｜`make_report.py` 报告(md+HTML)｜`verify_examples.py` 验证模板｜`run_regression.py` 回归测试
+- 工具脚本（scripts/）：`extract_pdf.py` 识别｜`cut_questions.py` 题目级切图｜`align_answers.py` 答案分离对齐｜`locate.py` 批注定位｜`draw_annotations.py` 批注生成（含三重检查）｜`make_report.py` 报告(md+HTML)｜`make_solver_tasks.py` 盲解任务｜`compare_answers.py` 盲解比对｜`typo_scan.py` 错别字筛查｜`verify_examples.py` 验证模板｜`run_regression.py` 回归测试(17项)
 - 题目/答案错误完整清单与初中各模块易错点：[references/error-checklist.md](references/error-checklist.md)
 - 各题型核验配方（含可直接改的代码模板）：[references/verification-recipes.md](references/verification-recipes.md)
 - PDF 识别/OCR/公式识别工具与 GitHub 项目（含已下载的本地副本）：[references/toolchain.md](references/toolchain.md)
@@ -162,4 +180,5 @@ results.json 字段：
 3. 视觉识别的数字要复核（0/6、1/7、3/8、9/7），拿不准就放大再看。
 4. 原题官方答案也可能多值（"23或32"很常见），这也印证"多解正常"；与自算矛盾时做第三遍验算再下结论。
 5. 扫描版必须先 OCR，且 OCR 的数字每道题人工瞄一眼再把关。
-6. **改完任何脚本，先跑 `python scripts/run_regression.py`**，12 项全过再交付。
+6. **改完任何脚本，先跑 `python scripts/run_regression.py`**，17 项全过再交付。
+7. `typo_scan.py` 与 `compare_answers.py` 的输出都只是**候选**：错字候选回图复核；盲解不一致一律先列🟠存疑复核，绝不直接判官方错。
