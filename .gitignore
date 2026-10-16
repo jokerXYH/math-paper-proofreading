@@ -1,0 +1,17 @@
+# 运行产物
+tests/out/
+__pycache__/
+*.pyc
+
+# 本地参考资料（他人仓库，按需自行克隆）
+references/github/
+
+# 试卷与报告原件（含版权材料，不入库）
+*.pdf
+!示例/*.pdf
+输出/
+运行记录/
+
+# 系统文件
+.DS_Store
+Thumbs.db
