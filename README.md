@@ -232,7 +232,7 @@ A：题目小图默认缩到 1000px JPEG 内嵌；页数特别多时去掉 `--pa
 
 ```bash
 # 生成可分发 zip（排除 .git / 运行产物 / 第三方克隆）
-git archive --format=zip -o math-paper-proofreading-v2.2.0.zip HEAD
+git archive --format=zip -o math-paper-proofreading-v2.3.0.zip HEAD
 ```
 
 发布前必跑：`python scripts/validate_skill.py && python scripts/run_regression.py`。
