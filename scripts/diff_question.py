@@ -1,12 +1,9 @@
 # -*- coding: utf-8 -*-
-"""本地题目 vs 检索到的原题：差异定位（只给证据，不代替人工判定）
+"""本地题目 vs 检索到的原题：差异定位（只给线索，不判对错）
 =====================================================
-输入 search_original.py 的结果，逐题挑最相似的原题候选，做：
-  1) 文本归一化（全角/半角、数学符号统一）；
-  2) 字符级差异（difflib），标出增/删/改；
-  3) 数字集合比对（最高优先级：0/6、1/7 这类最致命）；
-  4) 运算符/限定词/长度差异检查；
-  5) 给出"待 AI 复核"的建议结论 —— 绝不直接判谁对。
+题目允许改编：换数/换情境/换问法都正常，**与原题不同不是错误**。
+本脚本只把差异分成 `info`（版本/文字）与 `check`（数字/条件变化，需按本地题重算），
+答案正确性交给 verify_answer.py / 独立求解。
 
 用法:
   python diff_question.py --originals 输出/search/search_results.json -o 输出/diff
@@ -17,7 +14,8 @@
   diff/diff_report.md      人读表格
 
 判定纪律:
-  差异 ≠ 错误。原题也可能被题库编辑过，必须结合渲染图、答案与第三来源复核。
+  题目改编≠错误。差异只用于提醒"本地题可能与常见版本不同"，必须按本地题重算；
+  答案是否正确用 verify_answer.py 验证，绝不因文本不同直接判错。
 """
 import argparse
 import json
@@ -145,52 +143,52 @@ def assess(local, original):
     if nl != no:
         miss, extra = sorted(nl - no), sorted(no - nl)
         issues.append({
-            "level": "high", "type": "数字不一致",
+            "level": "info", "type": "数字不同（可能改编）",
             "desc": f"本地题干数字 {sorted(nl)}；原题题干数字 {sorted(no)}",
             "missing_in_original": miss, "extra_in_original": extra,
         })
     elif tail_o - {t for t, _ in numbers_with_pos(lq)}:
-        issues.append({"level": "low", "type": "原题尾部含答案/补充",
+        issues.append({"level": "info", "type": "原题尾部含答案/补充",
                        "desc": "原题在题干之后还有数字内容（多为答案或后续设问），未纳入比对"})
     # 选项值单独看（不计入高优先，很多版本选项顺序/数值本就不同）
     ol, oo = option_numbers(lq), option_numbers(oq)
     if ol and oo and ol != oo:
-        issues.append({"level": "low", "type": "选项值不同",
-                       "desc": "选项数值有差异，需确认是否为同版本题目"})
+        issues.append({"level": "info", "type": "选项值不同",
+                       "desc": "选项数值有差异，可能为改编版本；请按本地题核对"})
     op_l = set(OP_RE.findall(na))
     op_o = set(OP_RE.findall(nb))
     if op_l != op_o:
-        issues.append({"level": "medium", "type": "运算符不一致",
-                       "desc": f"本地 {sorted(op_l)}；原题 {sorted(op_o)}"})
+        issues.append({"level": "check", "type": "运算符/条件不同",
+                       "desc": f"本地 {sorted(op_l)}；原题 {sorted(op_o)}（按本地题重算）"})
 
     repl_cjk = [s for s in spans if s["kind"] == "cjk"]
     repl_num = [s for s in spans if s["kind"] == "number"]
     if repl_cjk and not repl_num:
         issues.append({
-            "level": "medium", "type": "文字差异",
+            "level": "info", "type": "文字表述不同（可能改编）",
             "desc": "；".join(f"本地「{s['local']}」→ 原题「{s['original']}」"
                              for s in repl_cjk[:6]),
         })
     if spans and not issues:
-        issues.append({"level": "low", "type": "标点/格式差异",
-                       "desc": f"{len(spans)} 处字符差异，不影响题意可能性较大"})
+        issues.append({"level": "info", "type": "标点/格式差异",
+                       "desc": f"{len(spans)} 处字符差异，不影响题意"})
 
     gap = abs(len(na) - len(nb))
     if gap > max(12, 0.25 * len(na)):
-        issues.append({"level": "medium", "type": "长度差异大",
+        issues.append({"level": "info", "type": "长度差异大（可能改编）",
                        "desc": f"本地 {len(na)} 字，原题 {len(nb)} 字"})
 
     only_tail = bool(spans) and all(
         s["op"] == "insert" and s["local_pos"] >= max(0, len(na) - 1) for s in spans)
 
-    if any(i["level"] == "high" for i in issues):
-        verdict = "关键数字差异（待 AI 复核）"
-    elif ratio >= 0.95 or (only_tail and all(i["level"] == "low" for i in issues)):
-        verdict = "基本一致"
+    if any(i["level"] == "check" for i in issues):
+        verdict = "条件/数字有变化（按本地题重算）"
+    elif not issues or (only_tail and all(i["level"] == "info" for i in issues)):
+        verdict = "实质一致（可能仅表述不同）"
     elif ratio >= 0.80:
-        verdict = "局部差异（待 AI 复核）"
+        verdict = "版本差异（题目可能改编，非错误）"
     elif ratio >= 0.55:
-        verdict = "差异较大（可能非同题）"
+        verdict = "改编较大（可能非同题）"
     else:
         verdict = "低相似（不足以作为证据）"
 
@@ -225,7 +223,8 @@ def main():
 
     data = json.load(open(args.originals, encoding="utf-8-sig"))
     items, md = [], ["# 原题差异报告", "",
-                     "> 差异只是线索，不能直接判错；请结合渲染图与答案复核。", ""]
+                     "> **题目允许改编**：与原题不同 ≠ 错误。本报告只列差异线索；"
+                     "正确性以本地题目重算 + 答案等价验证为准。", ""]
     md.append("| 题 | 相似度 | 结论 | 主要差异 | 原题链接 |")
     md.append("|---|---|---|---|---|")
     for it in data.get("items", []):
@@ -261,14 +260,14 @@ def main():
     # 给 AI 的判定任务书：脚本只列证据，结论必须由模型/人给出
     tasks = ["# 原题差异判定任务（交给 AI 逐题判定）", "",
              "对每题只输出一个 JSON 对象，字段：",
-             '`{"qno": 3, "conclusion": "local_error|original_variant|both_uncertain|same", '
+             '`{"qid": "Q003", "conclusion": "adapted_ok|local_logic_error|local_answer_error|uncertain", '
              '"reason": "……", "evidence": ["……"], "confidence": "high|medium|low"}`', "",
-             "判定口径：",
-             "- `local_error`：本地题干/答案确实错（需能说明错因与正确答案）；",
-             "- `original_variant`：只是版本/排版不同，本地不算错；",
-             "- `both_uncertain`：证据不足，列🟠存疑；",
-             "- `same`：实质一致。", "",
-             "**禁止**仅凭“与网上不一样”就判 `local_error`；必须结合渲染图与答案。", ""]
+             "判定口径（题目允许改编）：",
+             "- `adapted_ok`：与网上原题不同，但本地题目逻辑自洽、可解，答案正确；",
+             "- `local_logic_error`：本地题目条件矛盾、缺条件、图文不符或无解；",
+             "- `local_answer_error`：本地答案数学上错误（必须先用 verify_answer.py 独立验证）；",
+             "- `uncertain`：证据不足，列🟠存疑。", "",
+             "**禁止**仅凭“与网上不一样”就判错；题目可以换数/换情境/换问法。", ""]
     for x in items:
         if not x.get("diff") and not x.get("issues"):
             continue

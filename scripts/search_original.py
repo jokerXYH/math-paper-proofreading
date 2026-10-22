@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-"""原题检索（把本地题目拿去搜原始出处与官方答案）
+"""原题线索检索（找参考答案、命题意图、条件是否漏）
 =====================================================
-用途：本地 PDF 与题库/网页原题不一致时，拿到"第三证据"再下结论。
+用途：为每道题找"可能的原题/官方答案"作为参考。
+注意：**题目允许改编**，本地题干与网上原题不同不是错误；最终必须按本地题重算并用
+verify_answer.py 验证答案。
 
 支持来源（--provider，可多选）:
   bing        必应网页搜索（无需 Key）
@@ -409,7 +411,8 @@ def main():
         json.dump(data, f, ensure_ascii=False, indent=1)
     with open(os.path.join(args.out, "queries.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(md)
-                + "\n\n> 提示：候选只是线索，必须点开原题核对题干/答案后再作为证据。\n")
+                + "\n\n> 题目允许改编：与网上原题不同 ≠ 错误；候选只用于参考/找答案，"
+                  "最终按本地题重算并用 verify_answer.py 验证。\n")
 
     n_hit = sum(1 for x in out_items if x["results"])
     print(f"检索完成: {len(out_items)} 题，{n_hit} 题有候选 → "

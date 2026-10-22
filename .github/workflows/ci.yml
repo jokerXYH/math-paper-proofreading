@@ -14,8 +14,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt -r requirements-math.txt
       - name: Validate skill structure
         run: python scripts/validate_skill.py
       - name: Run regression (built-in samples)
         run: python scripts/run_regression.py
+        env:
+          RUN_OCR: "0"

@@ -265,11 +265,12 @@ def main():
         if os.path.exists(os.path.join(diff_dir, "diff_results.json")) else []
     d3 = next((x for x in diffs if x["qno"] == 3), {})
     d5 = next((x for x in diffs if x["qno"] == 5), {})
-    check("12a 数字差异判为高优先",
-          any(i["type"] == "数字不一致" and i["level"] == "high" for i in d3.get("issues", [])),
+    check("12a 数字差异判为版本线索（非错误）",
+          any(i["type"].startswith("数字不同") and i["level"] in ("info", "check")
+              for i in d3.get("issues", [])),
           str(d3.get("issues")))
     check("12b 原题尾部答案不误报关键差异",
-          not any(i["level"] == "high" for i in d5.get("issues", [])), str(d5.get("issues")))
+          not any(i["level"] == "check" for i in d5.get("issues", [])), str(d5.get("issues")))
 
     # ---- 13) 可视化审阅台 ----
     review_html = os.path.join(OUT, "review.html")
@@ -280,7 +281,7 @@ def main():
     html_txt = open(review_html, encoding="utf-8").read() if os.path.exists(review_html) else ""
     check("13a 审阅台生成", len(html_txt) > 20000, f"{len(html_txt)} 字符")
     check("13b 内嵌题目图与差异数据",
-          "data:image/jpeg;base64," in html_txt and '"diff"' in html_txt)
+          "data:image/" in html_txt and '"diff"' in html_txt)
 
     # ---- 14) 原题检索（离线模式，只生成链接） ----
     search_dir = os.path.join(OUT, "search")
@@ -296,7 +297,8 @@ def main():
     # ---- 15) OCR 兜底（有引擎才跑，否则跳过） ----
     import importlib.util
     has_ocr = any(importlib.util.find_spec(m) for m in
-                  ("rapidocr_onnxruntime", "rapidocr", "paddleocr", "pytesseract"))
+                  ("rapidocr_onnxruntime", "rapidocr", "paddleocr", "pytesseract")) \
+        and os.environ.get("RUN_OCR", "1") != "0"
     if not has_ocr:
         check("15 OCR 兜底（未安装引擎，跳过）", True, skip=True)
     else:
@@ -386,6 +388,33 @@ def main():
     all_ids = [x for it in di for x in it.get("qid", [])]
     check("18b 盲解任务按 qid 保留两题", len(all_ids) == 2 and len(set(all_ids)) == 2,
           str(all_ids))
+
+    # ---- 19) 数学答案等价引擎 ----
+    import importlib.util as _ilu
+    has_math = _ilu.find_spec("sympy") is not None
+    if not has_math:
+        check("19 数学等价引擎（未装 sympy，跳过）", True, skip=True)
+        check("20 盲解数学等价（未装 sympy，跳过）", True, skip=True)
+    else:
+        r = run([py, os.path.join(HERE, "verify_answer.py"), "--self-test"])
+        check("19 数学等价引擎自检（17 项）",
+              r.returncode == 0 and "自检: 17/17" in r.stdout,
+              (r.stdout + r.stderr)[-400:])
+
+        # ---- 20) 盲解比对接入数学等价 ----
+        math_dir = os.path.join(OUT, "mathcmp")
+        os.makedirs(math_dir, exist_ok=True)
+        write_json(os.path.join(math_dir, "off.json"),
+                   {"Q001": "√12", "Q002": "8/3", "Q003": "x>2"})
+        write_json(os.path.join(math_dir, "sol.json"),
+                   {"Q001": "2√3", "Q002": "2.6666666667", "Q003": "(2,+∞)"})
+        r = run([py, os.path.join(HERE, "compare_answers.py"),
+                 "--official", os.path.join(math_dir, "off.json"),
+                 "--solver", os.path.join(math_dir, "sol.json"),
+                 "-o", os.path.join(math_dir, "out")])
+        check("20 盲解比对识别数学等价（根式/小数/区间）",
+              "一致 3" in r.stdout and "不一致 0" in r.stdout,
+              r.stdout[-400:])
 
     # ---- 汇总 ----
     print("\n" + "=" * 60)

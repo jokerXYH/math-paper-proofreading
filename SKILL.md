@@ -1,9 +1,9 @@
 ---
 name: math-paper-proofreading
-description: 校对初中数学试卷/讲义/练习的题目与答案（PDF/图片/DOCX，支持双栏版面与扫描版 OCR）。两种模式：①纯题目时检查题干文字、题号、图文一致性、可解性；②带答案时逐题独立复算（手推 + Python 程序验证），并检索菁优网/网页原题、做逐字差异定位，判定答案错误、答案不全、存疑。产出红色批注版 PDF、单文件 HTML 审阅台（题目小图 + 原题对照 + 差异高亮 + 问题卡）和结论汇总表。当用户要求"检查题目""校对试卷""查错""核对答案""答案对不对""把错误圈出来/做批注""找原题比对"等数学试题检查场景时使用，尤其针对初中数学、菁优网题源的试卷。
+description: 校对初中/高中数学试卷的题目与答案（PDF/图片/DOCX，支持多栏版面与扫描版 OCR）。核心口径：题目允许改编，只查逻辑是否自洽/可解/图文一致；答案必须数学正确，用 SymPy + Math-Verify 做等价判定（分数/根式/解集/区间/方程解），再结合独立复算、程序验证与盲解交叉验证。产出红色批注版 PDF、单文件 HTML 审阅台（题目小图 + 原题线索 + 差异高亮 + 问题卡）和结论汇总表。当用户要求"检查题目""校对试卷""查错""核对答案""答案对不对""把错误圈出来/做批注"等数学试题检查场景时使用，尤其针对初高中数学、菁优网题源的试卷。
 license: MIT
 metadata:
-  version: 2.2.0
+  version: 2.3.0
   author: jokerXYH
   homepage: https://github.com/jokerXYH/math-paper-proofreading
 ---
@@ -16,25 +16,30 @@ metadata:
 
 | 判定 | 含义 | 输出 |
 |---|---|---|
-| 🔴 题目错误 | 题干错别字/漏字/多字、题号错乱（重复/跳号/乱序）、图文不符、条件矛盾导致无解 | 红框 + 修改建议 |
-| 🔴 答案错误 | 答案与正确结果不符 | 红框 + 正确答案 |
+| 🔴 题目逻辑错误 | 条件矛盾、缺条件导致无解、图文不符、题号错乱影响作答 | 红框 + 修改建议 |
+| 🔴 答案错误 | 答案数学上错误（需独立求解 + 程序/等价验证） | 红框 + 正确答案 |
 | 🔴 答案不全 | 题目多解但答案只写了部分情况 | 红框 + 补全所有解 |
-| 🟠 存疑 | 无法独立验证且查不到原题 | 橙框 + 说明疑点，不武断下结论 |
-| 🔵 提示 | 题目本身多解（答案写全即可）、表述可优化、易错提醒 | 蓝字备注，不算错误 |
+| 🟠 存疑 | 无法独立验证、OCR 低置信、近似值未确认 | 橙框 + 说明疑点 |
+| 🔵 提示 | 多解已写全、表述可优化、易错提醒 | 蓝字备注 |
+| ⚪ 改编 | 与网上原题不同，但本地题逻辑自洽、答案正确 | **不算错误**，仅记录 |
 
 2. **一切结论要有依据**：独立复算（必做）＋ 程序化验证（能编程的题必做）＋ 原题/官方答案比对（能查到就查）。三项都完成后再写"错误"。
 3. **可计算题优先写 Python 跑一遍**，不要只靠心算：枚举、模拟、周期检验最容易"看起来对"。
-4. 所有输出使用中文。
+4. **题目允许改编**：换数、换情境、换问法都可以，**与原题不一致不是错误**。题目只看"逻辑是否自洽、是否可解、图文是否一致"。
+5. **答案必须数学正确**：答案形式不同但等价（`2√3=√12`、`8/3≈2.667`、`x=5` 与 `5`）算正确；多解必须写全；近似值要确认保留位数。
+6. 所有输出使用中文。
 
 ## 第0步：环境与自检（每次开工先跑，10 秒）
 
 ```bash
 python -c "import pymupdf, sys; print('pymupdf', pymupdf.__version__, sys.version)"  # 唯一必需依赖
 python scripts/validate_skill.py        # 结构/脚本/引用完整性自检
-python scripts/run_regression.py        # 38 项全流程自检（内置单栏+双栏+三栏样卷，零外部依赖）
+python scripts/run_regression.py        # 40 项全流程自检（内置单栏+双栏+三栏样卷，零外部依赖）
 ```
 
 - 缺 pymupdf：`pip install pymupdf`（或 `pip install -r requirements.txt`）。
+- **答案精确判定（强烈建议）**：`pip install -r requirements-math.txt`（SymPy + Math-Verify），然后
+  `python scripts/verify_answer.py --self-test` 应 17/17 通过。
 - 扫描版另装 OCR 引擎（推荐）：`pip install rapidocr-onnxruntime`；不装则只能人工看图。
 - 自检不通过先修环境，**不要带着坏环境开始校对**。
 - 有私有黄金样卷时：`python scripts/run_regression.py --pdf 原稿.pdf`（追加题数/跨页/错字命中检查）。
@@ -46,7 +51,7 @@ python scripts/run_regression.py        # 38 项全流程自检（内置单栏+�
 
 ```
 Task Progress:
-- [ ] 0. 环境自检：validate_skill.py + run_regression.py（38 项全过）
+- [ ] 0. 环境自检：validate_skill.py + run_regression.py（40 项全过）
 - [ ] 1. 识别文档：prepare_input（图片/DOCX→PDF）→ OCR（扫描版）→ extract_pdf（文本+逐页图，栏感知）→ cut_questions（每题小图 + 答案区拆分）
 - [ ] 2. 判断模式：看 answers.json / 搜"答案/解析/参考答案"；无答案＝模式A，含答案＝模式B（答案分离在另一文件？先 align_answers.py 配对）
 - [ ] 3. 拆题建清单：题号、页码、栏、是否含答案、题型（cut_questions 输出）
@@ -119,7 +124,20 @@ python scripts/align_answers.py 题目.pdf 答案.pdf -o align
 
 1. **逐题独立复算（手推）**：不看文档答案，先做出自己的答案，再对照。
 2. **程序化验证**（可编程题必做）：按 references/verification-recipes.md 选择模板——枚举、模拟、周期检测、公式验证等。scripts/verify_examples.py 里有可直接改用的真实案例。
-3. **盲解交叉验证（防自证偏差）**——重要题/不一致题必做：
+3. **答案等价判定（必做，防止"形式不同被误判"）**：
+
+```bash
+# 两个答案是否数学等价（分数/根式/小数/解集/区间/多解顺序）
+python scripts/verify_answer.py --mine "2√3" --official "√12"
+# 方程解代入检验
+python scripts/verify_answer.py --equation "2(x-1)=x+3" --value "5"
+# 直接求解，和文档答案对照
+python scripts/verify_answer.py --solve "x^2-5x+6=0"
+```
+
+- `same`（等价）/ `different`（不等价）/ `uncertain`（近似值或无法解析，列🟠存疑）。
+- **答案必须过这一步**；不能只靠肉眼或字符串比对。`compare_answers.py` 已自动接入数学等价。
+4. **盲解交叉验证（防自证偏差）**——重要题/不一致题必做：
 
 ```bash
 python scripts/make_solver_tasks.py 输出/cut/questions.json -o solver_tasks
@@ -131,7 +149,7 @@ python scripts/compare_answers.py --official 官方.json --solver solver_answers
 - **任务书/`solver_answers.json` 用全局 `qid`（Q001…）**，多章节题号重复也不会互相覆盖；原题号只用于对照；
 - 多解答案顺序不同、B 与 B(2) 这类写法差异，比对器会自动识别为"一致"。
 
-4. **原题检索 + 差异定位（第三证据）**：
+5. **原题检索 + 差异定位（只作参考，不要求题干一致）**：
 
 ```bash
 # 生成检索（默认 360 + bing + offline；菁优网需 Cookie：JYEOO_COOKIE）
@@ -142,17 +160,17 @@ python scripts/diff_question.py --originals 输出/search/search_results.json -o
 
 - `queries.md` 里有可点击链接；菁优网/学科网常需登录，**优先用浏览器打开人工核对**（或把 Cookie 配到环境变量）。
 - `ai_review_tasks.md` 是给模型/子代理的判定任务书：逐题输出
-  `{"qno","conclusion":"local_error|original_variant|both_uncertain|same","reason","confidence"}`。
-- 差异分级：数字不一致＝最高优先（0/6、1/7 最致命）；运算符/限定词次之；标点与空格基本可忽略。
-- **AI 判定纪律**：脚本只给"差异线索"，绝不自动判谁对。结合渲染图、答案与第三来源，逐条得出"本地错 / 原题版本不同 / 无法确认（存疑）"。
-- 原题也可能被题库二次编辑，**不能因为"和原题不一样"就直接判本地错**。
+  `{"qid","conclusion":"adapted_ok|local_logic_error|local_answer_error|uncertain","reason","confidence"}`。
+- 差异分级：数字/运算符/条件变化 → **按本地题目重新计算**，不是错误；文字/标点差异 → 版本改编，忽略。
+- **AI 判定纪律**：题目允许改编，**与原题不同 ≠ 错误**。先独立解本地题、用 `verify_answer.py` 验证答案；只有"本地逻辑错 / 本地答案错"才报错，其余记为改编或存疑。
+- 原题也可能被题库二次编辑；原题答案只作参考，最终以本地题目重算为准。
 
-5. **分类入表**：
+6. **分类入表**：
    - 答案错误：给出"错在哪 + 正确答案 + 依据"；
    - 答案不全：列出完整解集（这属于答案问题！）；
    - 过程错误（答案对）：指出过程错处；
    - 题目问题：沿用模式A的判定。
-6. 记录格式：`{题号, 我的独立答案, 文档答案, 是否一致, 验证方式（自算/程序/盲解/原题）, 备注}`。
+7. 记录格式：`{题号, 我的独立答案, 文档答案, 是否一致, 验证方式（自算/程序/等价/盲解/原题）, 备注}`。
 
 ### 第5步：分级汇总
 
@@ -177,6 +195,7 @@ python scripts/make_review.py \
   --questions 输出/cut/questions.json \
   --results 输出/results.json \
   --diff 输出/diff/diff_results.json \
+  --verify 输出/verify/verify_results.json \
   --pages 输出/extract/pages \
   --pdf 试卷.pdf \
   -o 输出/审阅台.html
@@ -246,21 +265,23 @@ results.json 字段：
 
 ## 速查与参考（一层引用）
 
-- 工具脚本（scripts/）：`prepare_input.py` 图片/DOCX→PDF｜`ocr_pdf.py` 扫描版 OCR｜`extract_pdf.py` 识别｜`cut_questions.py` 栏感知切题 + 答案区拆分｜`align_answers.py` 答案分离对齐｜`search_original.py` 原题检索｜`diff_question.py` 原题差异定位｜`make_review.py` HTML 审阅台｜`locate.py` 批注定位｜`draw_annotations.py` 批注生成（含三重检查）｜`make_report.py` 报告(md+HTML)｜`make_solver_tasks.py` 盲解任务｜`compare_answers.py` 盲解比对｜`typo_scan.py` 错别字筛查｜`verify_examples.py` 验证模板｜`run_regression.py` 回归测试（38 项）｜`validate_skill.py` 结构自检｜`recognition.py` 栏检测/阅读顺序库
+- 工具脚本（scripts/）：`prepare_input.py` 图片/DOCX→PDF｜`ocr_pdf.py` 扫描版 OCR｜`extract_pdf.py` 识别｜`cut_questions.py` 栏感知切题 + 答案区拆分｜`align_answers.py` 答案分离对齐｜`search_original.py` 原题检索｜`diff_question.py` 原题差异定位｜`make_review.py` HTML 审阅台｜`locate.py` 批注定位｜`draw_annotations.py` 批注生成（含三重检查）｜`make_report.py` 报告(md+HTML)｜`make_solver_tasks.py` 盲解任务｜`compare_answers.py` 盲解比对（含数学等价）｜`verify_answer.py` 答案等价判定｜`typo_scan.py` 错别字筛查｜`verify_examples.py` 验证模板｜`run_regression.py` 回归测试（40 项）｜`validate_skill.py` 结构自检｜`recognition.py` 栏检测/阅读顺序库
 - 题目/答案错误完整清单与初中各模块易错点：[references/error-checklist.md](references/error-checklist.md)
 - 各题型核验配方（含可直接改的代码模板）：[references/verification-recipes.md](references/verification-recipes.md)
 - 识别精度、OCR、版面与公式工具选型：[references/recognition.md](references/recognition.md)
+- 答案等价、求解与初高中数学验证协议：[references/math-verification.md](references/math-verification.md)
 - PDF 识别/OCR/公式识别工具与 GitHub 项目（可按需克隆到 `references/github/`）：[references/toolchain.md](references/toolchain.md)
 - 菁优网题源检索与比对流程：[references/jyeoo-workflow.md](references/jyeoo-workflow.md)
 
 ## 红线要求（最容易踩的坑）
 
-1. **多解≠错误**：多解题只给🔵提示（蓝），只有题干/答案真错、答案不全才🔴报错（红）。answer 不唯一且答案册写全 = 完全正确。
+1. **改编≠错误**：题目可以换数/换情境/换问法，与网上原题不同不报错；题目只看逻辑自洽、可解、图文一致。**多解≠错误**：多解题只给🔵提示（蓝），只有题目逻辑真错、答案真错、答案不全才🔴报错（红）。
 2. 批注小字超宽会被整体裁掉——生成后**必须看渲染图**确认（脚本会警告宽度/越界/遮挡，警告不为空就修正重跑）。
 3. 视觉识别的数字要复核（0/6、1/7、3/8、9/7），拿不准就放大再看。
 4. 原题官方答案也可能多值（"23或32"很常见），这也印证"多解正常"；与自算矛盾时做第三遍验算再下结论。
 5. 扫描版必须先 OCR，且 OCR 的数字每道题人工瞄一眼再把关。
-6. **改完任何脚本，先跑 `python scripts/run_regression.py`**（内置单栏+双栏+三栏样卷 38 项，零外部依赖），全过再交付；有私有样卷时再加 `--pdf` 跑黄金回归。
-7. **原题检索与差异只是"线索"**：`diff_question.py` 的"关键数字差异"也必须回图 + 看答案 + 第三来源复核；**绝不因与网上原题不同就直接判错**。
-8. **多栏卷必须检查 `column` 与裁剪图**：栏检测误判会导致题文/配图串栏，发现串栏立即 `--no-columns` 或人工设栏后重切。
-9. `typo_scan.py` 与 `compare_answers.py` 的输出都只是**候选**：错字候选回图复核；盲解不一致一律先列🟠存疑复核，绝不直接判官方错。
+6. **改完任何脚本，先跑 `python scripts/run_regression.py`**（内置单栏+双栏+三栏样卷 40 项，零外部依赖），全过再交付；有私有样卷时再加 `--pdf` 跑黄金回归。
+7. **原题检索与差异只是"参考"**：`diff_question.py` 的数字/条件差异必须**按本地题重算**，不能直接判错；题目改编是允许的。
+8. **答案必须过数学等价判定**：`verify_answer.py` / `compare_answers.py`；`same` 才算对，`uncertain`（近似值/无法解析）列🟠存疑，不能凭"看起来一样"。
+9. **多栏卷必须检查 `column` 与裁剪图**：栏检测误判会导致题文/配图串栏，发现串栏立即 `--no-columns` 或人工设栏后重切。
+10. `typo_scan.py` 与 `compare_answers.py` 的输出都只是**候选**：错字候选回图复核；盲解不一致一律先列🟠存疑复核，绝不直接判官方错。

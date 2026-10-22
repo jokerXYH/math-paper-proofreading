@@ -1,28 +1,29 @@
-# 数学试卷校对 Skill（math-paper-proofreading）v2.2
+# 数学试卷校对 Skill（math-paper-proofreading）v2.3
 
-> 面向**初中数学**试卷的「题目 + 答案」双模式校对 Agent Skill：
-> 识别 PDF → 逐题核对 → 原题检索与差异定位 → 红蓝批注写回 PDF → 单文件 HTML 审阅台。
-> 主打**菁优网题源试卷**的教研校对场景；支持双栏版面、扫描版 OCR，开箱自带 38 项自检。
+> 面向**初中/高中数学**试卷的「题目 + 答案」双模式校对 Agent Skill：
+> 识别 PDF → 逐题核对 → 答案数学等价验证 → 原题线索/差异 → 红蓝批注 → 单文件 HTML 审阅台。
+> **题目允许改编，只查逻辑；答案必须数学正确。** 支持双栏/三栏、扫描版 OCR，开箱自带 40 项自检。
 
-[![version](https://img.shields.io/badge/version-2.2.0-blue)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-2.3.0-blue)](CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 ## 它能做什么
 
 | 能力 | 说明 |
 |---|---|
-| 🔍 **模式A（纯题目）** | 检查题干文字（错字/漏字/标点）、题号链（重复/跳号/乱序）、图文一致性、可解性、页结构（空白页/缺标题） |
-| ✅ **模式B（含答案）** | 在模式A基础上逐题独立复算 + Python 程序验证 + **盲解交叉验证（第二解题者）** + 原题检索/差异定位，判定：答案错误 / 答案不全 / 过程错误 / 存疑 |
+| 🔍 **模式A（纯题目）** | 检查逻辑自洽、条件是否充分、可解性、图文一致性、题号链、页结构；**题目允许改编，不要求与原题一致** |
+| ✅ **模式B（含答案）** | 逐题独立复算 + Python 程序验证 + **答案数学等价判定** + 盲解交叉验证 + 原题线索，判定：答案错误 / 答案不全 / 过程错误 / 存疑 |
+| 🧮 **答案等价判定** | `verify_answer.py`：分数/根式/小数/解集/区间/多解/方程解，SymPy + Math-Verify 双引擎；形式不同但等价不再误判 |
 | 🧩 **多栏版面感知（1–4 栏）** | XY-cut 还原阅读顺序，按栏切题与裁剪，左右栏不串题、不串图 |
 | 🖼️ **扫描版 OCR** | RapidOCR / PaddleOCR / Tesseract 自动选择，输出低置信行清单 + 可检索 PDF |
 | 🧩 **答案区自动拆分** | 卷末「参考答案/解析」自动识别进 `answers.json`，不再被当成新题；题目与答案分两个文件时用 `align_answers.py` 按题号配对 |
 | 🔤 **错别字自动筛查** | 规则引擎高召回（错字表/叠字/标点/括号配对/数列加号）+ 生成 LLM 通读提示词（语义漏字交给模型） |
-| 🔎 **原题检索 + 逐字差异** | `search_original.py` 生成检索并抓候选；`diff_question.py` 做归一化差异，数字不一致最高优先 |
+| 🔎 **原题线索（非标准答案）** | `search_original.py` 检索候选；`diff_question.py` 标版本差异；**改编≠错误**，按本地题重算 |
 | 🖍️ **可视化批注** | 红框 + 红字**直接写进 PDF 内容层**（任何阅读器/打印可见）：错在哪、正确答案是什么 |
 | 🖥️ **HTML 审阅台** | 单文件交互页：题目列表 + 小图 + 识别文本 + 原题对照（差异高亮）+ 问题卡 + 整页定位；复核结果可导出 JSON |
 | 📊 **报告** | 单文件 HTML 报告：每题一张卡（题目小图 + 错因 + 正确答案 + 依据），可直接发人 |
-| 📏 **判定纪律** | **多解/答案不唯一 ≠ 错误**：只标🔵提示（蓝）；只有题目真错、答案真错、答案不全才标🔴（红） |
-| 🧪 **可回归** | 内置单栏 + 双栏 + 三栏样卷，clone 下来一行命令跑完 38 项自检 |
+| 📏 **判定纪律** | 改编/多解 ≠ 错误；只有**题目逻辑错、答案错、答案不全**才标🔴（红） |
+| 🧪 **可回归** | 内置单栏 + 双栏 + 三栏样卷，clone 下来一行命令跑完 40 项自检 |
 
 ## 工作流
 
@@ -34,11 +35,11 @@ extract/cut ──► 每题小图 + 文本 + 题号链 + answers.json（双栏�
                          │（答案在另一个文件？align_answers 先配对）
               ┌──────────┴──────────┐
         模式A(纯题目)            模式B(带答案)
-        题干/题号/图文/可解性      + 手推 + 程序验证 + 盲解交叉验证
-        + typo_scan 错别字候选         + 原题检索 + 逐字差异
+        逻辑/条件/图文/可解性      + 手推 + 程序验证 + 答案等价(verify_answer)
+        + typo_scan 错别字候选         + 盲解交叉验证 + 原题线索(非标准)
               └──────────┬──────────┘
                           ▼
-        分级汇总(🔴错误/🟠存疑/🔵提示) ──► make_review（HTML 审阅台）
+        分级汇总(🔴错误/🟠存疑/🔵提示/⚪改编) ──► make_review（HTML 审阅台）
                           ▼
               locate 定位 ──► 批注 PDF ──► make_report
 ```
@@ -61,7 +62,8 @@ git clone https://github.com/jokerXYH/math-paper-proofreading.git
 安装依赖（唯一必需项）：
 
 ```bash
-pip install -r requirements.txt   # 等价于 pip install pymupdf
+pip install -r requirements.txt        # 必需：pymupdf
+pip install -r requirements-math.txt   # 强烈建议：sympy + math-verify（答案等价）
 ```
 
 > 扫描版另装 OCR 引擎（推荐 RapidOCR，约 80MB）：`pip install rapidocr-onnxruntime`
@@ -73,7 +75,8 @@ pip install -r requirements.txt   # 等价于 pip install pymupdf
 ```bash
 cd math-paper-proofreading
 python scripts/validate_skill.py    # 结构 / 引用 / 脚本可用性
-python scripts/run_regression.py    # 38 项全流程自检（内置单栏+双栏+三栏样卷，无需准备试卷）
+python scripts/run_regression.py    # 40 项全流程自检（内置单栏+双栏+三栏样卷，无需准备试卷）
+python scripts/verify_answer.py --self-test   # 数学等价引擎 17 项
 ```
 
 全部 PASS 即可开工；改完任何脚本后也跑这两条。
@@ -105,13 +108,18 @@ python scripts/typo_scan.py 试卷.pdf -o 输出/typo
 python scripts/make_solver_tasks.py 输出/cut/questions.json -o 输出/tasks
 python scripts/compare_answers.py --official 官方.json --solver solver_answers.json -o 输出/cmp
 
-# 5.5) 原题检索 + 逐字差异（菁优网需 JYEOO_COOKIE；拿不到就点 queries.md 人工看）
+# 5.5) 答案数学等价（分数/根式/解集/区间；形式不同也能判对）
+python scripts/verify_answer.py --mine "2√3" --official "√12"
+python scripts/verify_answer.py --equation "2(x-1)=x+3" --value "5"
+
+# 5.6) 原题线索（题目允许改编，差异≠错误；菁优网需 JYEOO_COOKIE）
 python scripts/search_original.py --questions 输出/cut/questions.json -o 输出/search --limit-q 10
 python scripts/diff_question.py --originals 输出/search/search_results.json -o 输出/diff
 
 # 6) HTML 审阅台（先在这里看哪里有问题；可导出复核 JSON）
 python scripts/make_review.py --questions 输出/cut/questions.json \
   --results 输出/results.json --diff 输出/diff/diff_results.json \
+  --verify 输出/verify/verify_results.json \
   --pages 输出/extract/pages --pdf 试卷.pdf -o 输出/审阅台.html
 
 # 7) 批注定位（关键词→坐标，免手填）
@@ -143,11 +151,12 @@ python scripts/run_regression.py --pdf 一份测试卷.pdf
 | `draw_annotations.py` | 批注引擎：画入 PDF 内容层；宽度/越界/遮挡三重检查 |
 | `make_report.py` | 报告生成：markdown + 单文件 HTML（图片内嵌） |
 | `make_solver_tasks.py` | **盲解任务生成**：把题目打包成盲解任务书（自动去重） |
-| `compare_answers.py` | **盲解比对**：与官方答案交叉验证，不一致自动列"存疑" |
+| `compare_answers.py` | **盲解比对**：与官方答案交叉验证，不一致自动列"存疑"；已接数学等价 |
+| `verify_answer.py` | **答案等价判定**：SymPy + Math-Verify；分数/根式/解集/区间/方程解/近似值 |
 | `typo_scan.py` | **错别字筛查**：规则高召回 + LLM 通读提示词 |
 | `verify_examples.py` | 6 类常考题的程序化验证模板（程序框图/数位整除/周期/集合/公式…） |
 | `recognition.py` | 版面库：栏检测、XY-cut 阅读顺序、题号锚定（供其它脚本调用） |
-| `run_regression.py` | 38 项自检（内置单栏+双栏+三栏样卷；`--pdf` 追加黄金样卷回归） |
+| `run_regression.py` | 40 项自检（内置单栏+双栏+三栏样卷；`--pdf` 追加黄金样卷回归） |
 | `validate_skill.py` | 技能结构 / frontmatter / 引用 / 脚本 `--help` / 仓库卫生自检 |
 | `tools/batch_audit.py` | **批量体检**：一次跑多份 PDF，输出多栏页/题号/0 号误判/回退/扫描件提示 |
 
@@ -163,11 +172,12 @@ python tools/batch_audit.py 试卷样本/ -o 试卷样本/report --cut
 
 | 判定 | 含义 |
 |---|---|
-| 🔴 题目错误 | 题干错字/漏字/标点误用、题号错乱、图文不符、条件矛盾无解 |
-| 🔴 答案错误 | 答案与正确结果不符 |
+| 🔴 题目逻辑错误 | 条件矛盾、缺条件无解、图文不符、题号错乱影响作答（**不是**"与原题不同"） |
+| 🔴 答案错误 | 答案数学上错误（独立求解 + `verify_answer.py` 判定不等价） |
 | 🔴 答案不全 | 题目多解但答案只写了部分情况 |
-| 🟠 存疑 | 无法独立验证且查不到原题，待人工复核 |
+| 🟠 存疑 | 无法独立验证、OCR 低置信、近似值未确认，待人工复核 |
 | 🔵 提示 | **多解/答案不唯一（答案写全即为正确）**、表述可优化、易错提醒——**不算错误** |
+| ⚪ 改编 | 与网上原题不同但本地题逻辑自洽、答案正确——**不算错误** |
 
 ## 常见问题
 
@@ -205,6 +215,15 @@ A：不能可靠自动校对。手写体 OCR 置信度通常很低，脚本会�
 
 **Q：原题检索用哪个源？**
 A：默认 360 + Bing + 离线链接（国内教育站收录更好）；菁优网需登录 Cookie。检索结果只是线索，`diff_question.py` 只标差异，最终由 AI/人结合渲染图与答案判定。
+
+**Q：本地题目和原题不一样，要改吗？**
+A：不用。题目允许改编（换数/换情境/换问法）。只要本地题逻辑自洽、可解、答案正确，就记为 ⚪改编，不算错误；只有条件矛盾/缺条件/图文不符/答案错才报错。
+
+**Q：答案写成 0.333 或 2.67，算对吗？**
+A：`verify_answer.py` 对 `1/3` vs `0.333` 判 `uncertain`（近似值），提示确认题目要求的保留位数；不武断判对或判错。分数/根式等价（`2√3=√12`）会判 `same`。
+
+**Q：几何证明能自动判吗？**
+A：不能自动判"证明过程是否严谨"。可计算部分（坐标、长度、角度、面积）用 SymPy/程序验证；证明结构按 `references/math-verification.md` 的清单人工/AI 复核。
 
 **Q：HTML 审阅台太大 / 打不开？**
 A：题目小图默认缩到 1000px JPEG 内嵌；页数特别多时去掉 `--pages`，或加 `--no-images` 只留文本，仍可配合 PDF 使用。

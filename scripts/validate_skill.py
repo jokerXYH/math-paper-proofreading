@@ -127,6 +127,10 @@ def main():
                            errors="replace")
         if r.returncode == 0:
             print(f"pymupdf 版本: {r.stdout.strip()}")
+    if importlib.util.find_spec("sympy") is None:
+        warn("未安装 sympy（pip install -r requirements-math.txt），答案等价判定退化为数值比较")
+    if importlib.util.find_spec("math_verify") is None:
+        warn("未安装 math-verify，LaTeX 答案等价判定不可用")
 
     # ---- 5) 仓库卫生 ----
     junk = []

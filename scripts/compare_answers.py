@@ -88,6 +88,14 @@ def loose_eq(a, b):
     ra, rb = re.match(r"^([A-D])", na), re.match(r"^([A-D])", nb)
     if ra and rb and ra.group(1) == rb.group(1):
         return "一致(选项字母相同)"
+    # 符号/数值等价（SymPy / Math-Verify，可选依赖）
+    try:
+        from verify_answer import verify_answer
+        mv = verify_answer(a, b)
+        if mv["verdict"] == "same":
+            return f"一致(数学等价:{mv['method']})"
+    except Exception:
+        pass
     return None
 
 

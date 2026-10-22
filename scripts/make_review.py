@@ -17,6 +17,7 @@
   questions.json   cut_questions.py 输出
   results.json     校对结论（level: error/doubt/hint；可选 verified）
   diff_results.json diff_question.py 输出
+  verify_results.json verify_answer.py 输出
   pages/           extract_pdf.py 渲染的 page_XX.png
 """
 import argparse
@@ -120,6 +121,8 @@ def merge(args):
     qs = load_json(args.questions) or []
     results = load_json(args.results) or {}
     diff = load_json(args.diff) or {}
+    verify = load_json(args.verify) or {}
+    verify_by = {x.get("qid"): x for x in verify.get("items", []) if x.get("qid")}
     sizes = {}
     if args.pdf and os.path.exists(args.pdf):
         try:
@@ -179,6 +182,7 @@ def merge(args):
             "text_full": q.get("text_full") or local_text,
             "crop": file_uri(crop) if args.embed else "",
             "issues": issues,
+            "math": verify_by.get(qid) or verify_by.get(str(qno)) or {},
             "diff": {"verdict": d.get("verdict", ""), "similarity": d.get("similarity"),
                      "original_text": d.get("original_text", ""),
                      "source": d.get("source"), "left_html": dl, "right_html": dr,
@@ -387,7 +391,7 @@ function renderList(){
       <div style="flex:1;min-width:0">
         <div style="display:flex;gap:6px;align-items:center">${badge(st)}
           ${q.likely_question===false?'<span class="badge b-unchecked">疑非题目</span>':''}
-          <span class="meta">第${q.page}页${q.column!=null?` · 第${q.column+1}栏`:''}${sim!=null?` · 相似 ${Number(sim).toFixed(2)}`:''}</span></div>
+          <span class="meta">第${q.page}页${q.column!=null?` · 第${q.column+1}栏`:''}${sim!=null?` · 相似 ${Number(sim).toFixed(2)}`:''}${q.math&&q.math.verdict?` · 答案${q.math.verdict}`:''}</span></div>
         <div class="txt">${esc(q.text||'')||'<i>无文本</i>'}</div>
       </div></div>`;
   }).join('') : '<div class="empty">没有匹配的题目</div>';
@@ -433,8 +437,14 @@ function renderDetail(){
         ${q.text_full && q.text_full!==q.text ? `<details style="margin-top:8px"><summary class="meta" style="cursor:pointer">完整文本（含答案/解答）</summary><div class="textbox" style="margin-top:6px">${esc(q.text_full)}</div></details>`:''}
         ${q.issues&&q.issues.length?`<h4 style="margin:12px 0 4px;font-size:12px;color:var(--muted)">批注问题</h4>
           ${q.issues.map(issueHtml).join('')}`:''}
-        ${diff.issues&&diff.issues.length?`<h4 style="margin:12px 0 4px;font-size:12px;color:var(--muted)">与原题的差异线索</h4>
-          ${diff.issues.map(i=>`<div class="issue ${i.level==='high'?'error':i.level==='medium'?'doubt':'hint'}">
+        ${q.math&&q.math.verdict?`<h4 style="margin:12px 0 4px;font-size:12px;color:var(--muted)">答案等价判定</h4>
+          <div class="issue ${q.math.verdict==='same'?'hint':q.math.verdict==='different'?'error':'doubt'}">
+            <b>${q.math.verdict==='same'?'答案等价':q.math.verdict==='different'?'答案不等价':'无法确定'}</b>
+            <p>文档：${esc(q.math.official||'')}　｜　本地：${esc(q.math.mine||'')}</p>
+            <p class="meta">方法：${esc(q.math.method||'')}${q.math.detail?' · '+esc(q.math.detail):''}</p>
+          </div>`:''}
+        ${diff.issues&&diff.issues.length?`<h4 style="margin:12px 0 4px;font-size:12px;color:var(--muted)">与原题的差异线索（题目允许改编，差异≠错误）</h4>
+          ${diff.issues.map(i=>`<div class="issue ${i.level==='check'?'doubt':'hint'}">
             <b>${esc(i.type)}</b><p>${esc(i.desc)}</p></div>`).join('')}`:''}
       </div>
     </div>
@@ -523,7 +533,7 @@ function exportJson(){
     questions:DATA.questions.map(q=>({qid:q.qid,qno:q.qno,page:q.page,auto_status:q.status,
       status:statusOf(q),note:noteOf(q),issues:q.issues,
       diff:{verdict:q.diff.verdict,similarity:q.diff.similarity,issues:q.diff.issues,
-            source:q.diff.source}}))};
+            source:q.diff.source}, math:q.math||{}}))};
   const blob=new Blob([JSON.stringify(out,null,1)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download='review_results.json'; a.click(); URL.revokeObjectURL(a.href);
@@ -571,6 +581,7 @@ def main():
     ap.add_argument("--questions", help="questions.json")
     ap.add_argument("--results", help="results.json（人工/AI 结论）")
     ap.add_argument("--diff", help="diff_results.json")
+    ap.add_argument("--verify", help="verify_results.json（数学等价判定）")
     ap.add_argument("--pages", help="extract_pdf.py 的 pages 目录")
     ap.add_argument("--pdf", help="原 PDF（用于读取页面尺寸，修正整页框定位）")
     ap.add_argument("--data", help="已合并的 review.json（跳过其它输入）")
