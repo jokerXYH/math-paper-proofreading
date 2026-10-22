@@ -2,7 +2,7 @@
 
 > 面向**初中数学**试卷的「题目 + 答案」双模式校对 Agent Skill：
 > 识别 PDF → 逐题核对 → 原题检索与差异定位 → 红蓝批注写回 PDF → 单文件 HTML 审阅台。
-> 主打**菁优网题源试卷**的教研校对场景；支持双栏版面、扫描版 OCR，开箱自带 35 项自检。
+> 主打**菁优网题源试卷**的教研校对场景；支持双栏版面、扫描版 OCR，开箱自带 36 项自检。
 
 [![version](https://img.shields.io/badge/version-2.2.0-blue)](CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -22,7 +22,7 @@
 | 🖥️ **HTML 审阅台** | 单文件交互页：题目列表 + 小图 + 识别文本 + 原题对照（差异高亮）+ 问题卡 + 整页定位；复核结果可导出 JSON |
 | 📊 **报告** | 单文件 HTML 报告：每题一张卡（题目小图 + 错因 + 正确答案 + 依据），可直接发人 |
 | 📏 **判定纪律** | **多解/答案不唯一 ≠ 错误**：只标🔵提示（蓝）；只有题目真错、答案真错、答案不全才标🔴（红） |
-| 🧪 **可回归** | 内置单栏 + 双栏 + 三栏样卷，clone 下来一行命令跑完 35 项自检 |
+| 🧪 **可回归** | 内置单栏 + 双栏 + 三栏样卷，clone 下来一行命令跑完 36 项自检 |
 
 ## 工作流
 
@@ -73,7 +73,7 @@ pip install -r requirements.txt   # 等价于 pip install pymupdf
 ```bash
 cd math-paper-proofreading
 python scripts/validate_skill.py    # 结构 / 引用 / 脚本可用性
-python scripts/run_regression.py    # 35 项全流程自检（内置单栏+双栏+三栏样卷，无需准备试卷）
+python scripts/run_regression.py    # 36 项全流程自检（内置单栏+双栏+三栏样卷，无需准备试卷）
 ```
 
 全部 PASS 即可开工；改完任何脚本后也跑这两条。
@@ -147,8 +147,17 @@ python scripts/run_regression.py --pdf 一份测试卷.pdf
 | `typo_scan.py` | **错别字筛查**：规则高召回 + LLM 通读提示词 |
 | `verify_examples.py` | 6 类常考题的程序化验证模板（程序框图/数位整除/周期/集合/公式…） |
 | `recognition.py` | 版面库：栏检测、XY-cut 阅读顺序、题号锚定（供其它脚本调用） |
-| `run_regression.py` | 35 项自检（内置单栏+双栏+三栏样卷；`--pdf` 追加黄金样卷回归） |
+| `run_regression.py` | 36 项自检（内置单栏+双栏+三栏样卷；`--pdf` 追加黄金样卷回归） |
 | `validate_skill.py` | 技能结构 / frontmatter / 引用 / 脚本 `--help` / 仓库卫生自检 |
+| `tools/batch_audit.py` | **批量体检**：一次跑多份 PDF，输出多栏页/题号/0 号误判/回退/扫描件提示 |
+
+## 批量体检（校准时用）
+
+```bash
+python tools/batch_audit.py 试卷样本/ -o 试卷样本/report --cut
+```
+
+一次跑多份 PDF，输出 `audit.md`（按疑似问题排序）与 `audit.json`：多栏页数、题号数、0 号误判、回退、扫描件提示。改栏检测/题号规则后先跑它，再抽看 `crops/`。
 
 ## 判定标准（关键）
 

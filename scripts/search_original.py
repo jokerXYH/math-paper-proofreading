@@ -319,6 +319,8 @@ def main():
     ap.add_argument("--fetch-top", type=int, default=0, help="抓取前 N 条候选正文")
     ap.add_argument("--no-robots", action="store_true", help="不检查 robots.txt")
     ap.add_argument("--no-cache", action="store_true")
+    ap.add_argument("--include-nonquestions", action="store_true",
+                    help="连 likely_question=false 的知识条目也检索")
     args = ap.parse_args()
     global CACHE_TTL
     if args.no_cache:
@@ -330,6 +332,8 @@ def main():
     items = []
     if args.questions:
         qs = json.load(open(args.questions, encoding="utf-8-sig"))
+        if not args.include_nonquestions:
+            qs = [q for q in qs if q.get("likely_question") is not False]
         if args.limit_q:
             qs = qs[:args.limit_q]
         for q in qs:

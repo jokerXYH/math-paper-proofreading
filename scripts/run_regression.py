@@ -347,6 +347,22 @@ def main():
             bad.append(q["qno"])
     check("16d 三栏裁剪不串栏", not bad, str(bad))
 
+    # ---- 17) 知识清单条目：标注为非题目，不污染检索/盲解 ----
+    know_pdf = os.path.join(OUT, "_sample", "knowledge.pdf")
+    kd = pymupdf.open()
+    kp = kd.new_page(width=595, height=842)
+    kp.insert_text((60, 70), "知识清单", fontsize=13, fontname="china-s")
+    kp.insert_text((60, 100), "1．一次函数的定义及性质", fontsize=11, fontname="china-s")
+    kp.insert_text((60, 125), "2．计算 (-2)^3＝（　　）", fontsize=11, fontname="china-s")
+    kd.save(know_pdf)
+    kd.close()
+    know_cut = os.path.join(OUT, "knowledge_cut")
+    run([py, os.path.join(HERE, "cut_questions.py"), know_pdf, "-o", know_cut, "--dpi", "70"])
+    kq_p = os.path.join(know_cut, "questions.json")
+    kq = json.load(open(kq_p, encoding="utf-8")) if os.path.exists(kq_p) else []
+    flags = [q.get("likely_question") for q in kq]
+    check("17 知识清单条目标注为非题目", flags == [False, True], str(flags))
+
     # ---- 汇总 ----
     print("\n" + "=" * 60)
     fails = [n for n, ok, _ in results if ok is False]

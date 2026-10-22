@@ -43,6 +43,8 @@ def main():
     ap.add_argument("questions", help="cut_questions.py 输出的 questions.json")
     ap.add_argument("-o", "--out", default="solver_tasks")
     ap.add_argument("--per-task", type=int, default=8)
+    ap.add_argument("--include-nonquestions", action="store_true",
+                    help="连 likely_question=false 的知识条目也生成任务")
     args = ap.parse_args()
 
     raw = json.load(open(args.questions, encoding="utf-8-sig"))
@@ -52,7 +54,8 @@ def main():
     qs, seen, dropped = [], set(), []
     for q in raw:
         qno = q.get("qno")
-        if (not str(q.get("text", "")).strip()) or qno in seen:
+        if (not str(q.get("text", "")).strip()) or qno in seen \
+                or (q.get("likely_question") is False and not args.include_nonquestions):
             dropped.append(qno)
             continue
         seen.add(qno)

@@ -53,6 +53,12 @@ ANSWER_HEAD_RE = re.compile(
 )
 # 答案区内部编号（允许后接数字，靠"题号递增"过滤小数）
 ANS_MARK_RE = re.compile(r"(?<!\d)(\d{1,3})\s*[.．、]\s*")
+# 章节/栏目标题：用于判断题号是否属于"知识清单"等非题目条目
+SEC_LABEL_RE = re.compile(
+    r"知识清单|知识点|考点梳理|知识梳理|方法总结|课堂例题|例题|练习|习题|作业|检测|复习|专题|第[一二三四五六七八九十\d]+讲|Part")
+# 题干特征词：有这些词基本可以确认是题目
+QUESTION_HINT_RE = re.compile(
+    r"[？?]|（\s*）|\(\s*\)|求|计算|解|若|已知|如图|下列|则|证明|画出|填空|选择|判断|化简")
 
 
 # ---------------- 兼容旧接口（align_answers 等仍在用） ----------------
@@ -198,6 +204,7 @@ def main():
     questions, answers, warns = [], [], []
     used_names = set()
     layout_warns = []
+    cur_section = None
 
     def crop_name(pno, qno, suffix="", prefix="q"):
         base = f"{prefix}_pg{pno:02d}_q{qno:02d}{suffix}"
@@ -220,6 +227,13 @@ def main():
         if lay["warnings"]:
             layout_warns.extend(f"第{pno}页: {w}" for w in lay["warnings"])
         anchors = lay["anchors"]
+        # 记录每个题号所在的章节标题（按阅读顺序推进）
+        sec_by_idx = {}
+        for idx, ln in enumerate(lay["ordered"]):
+            t = ln["text"].strip()
+            if len(t) <= 20 and SEC_LABEL_RE.search(t):
+                cur_section = t[:24]
+            sec_by_idx[idx] = cur_section
         if answer_from and pno > answer_from[0]:
             continue
         if answer_from and pno == answer_from[0]:
@@ -255,6 +269,10 @@ def main():
             stem_text = re.split(
                 r"【\s*(?:答案|解答|解析|分析|点评)\s*】|(?:答案|解答|解析)\s*[:：]",
                 full_text)[0].strip() or full_text
+            sec = sec_by_idx.get(a["line_index"]) or ""
+            has_hint = bool(QUESTION_HINT_RE.search(
+                lay["ordered"][a["line_index"]]["text"]))
+            likely = not (re.search(r"知识|方法|考点", sec) and not has_hint)
             questions.append({
                 "qno": a["qno"], "page": pno, "column": a["col"],
                 "page_w": round(lay["w"], 1), "page_h": round(lay["h"], 1),
@@ -262,6 +280,8 @@ def main():
                 "crop": os.path.join(crops_dir, name).replace("\\", "/"),
                 "text": stem_text[:600],
                 "text_full": full_text[:1200],
+                "section": sec,
+                "likely_question": likely,
                 "continues_to": None,
                 "continues_to_column": None,
             })
@@ -399,6 +419,9 @@ def main():
     with open(os.path.join(args.out, "report.txt"), "w", encoding="utf-8") as f:
         f.write(f"文件: {args.pdf}\n")
         f.write(f"切出题目: {len(questions)} 张\n")
+        n_know = sum(1 for q in questions if not q.get("likely_question", True))
+        if n_know:
+            f.write(f"其中疑似知识条目/非题目: {n_know} 条（likely_question=false，检索/盲解默认跳过）\n")
         cols = {p: len(per_page[p]["columns"]) for p in per_page if per_page[p]["columns"]}
         if cols:
             f.write("版面: " + "，".join(f"第{p}页{cols[p]}栏" for p in sorted(cols)) + "\n")
@@ -414,6 +437,9 @@ def main():
             f.write("\n".join(warns) + "\n")
 
     print(f"切出题目: {len(questions)} 张 → {os.path.join(args.out, 'crops')}")
+    n_know = sum(1 for q in questions if not q.get("likely_question", True))
+    if n_know:
+        print(f"其中疑似知识条目/非题目: {n_know} 条（已标注，检索/盲解默认跳过）")
     if answer_from:
         print(f"答案区: 从第{answer_from[0]}页起，检出答案 {len(answers)} 条 "
               f"→ {os.path.join(args.out, 'answers.json')}")

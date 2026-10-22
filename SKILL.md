@@ -31,13 +31,14 @@ metadata:
 ```bash
 python -c "import pymupdf, sys; print('pymupdf', pymupdf.__version__, sys.version)"  # 唯一必需依赖
 python scripts/validate_skill.py        # 结构/脚本/引用完整性自检
-python scripts/run_regression.py        # 35 项全流程自检（内置单栏+双栏+三栏样卷，零外部依赖）
+python scripts/run_regression.py        # 36 项全流程自检（内置单栏+双栏+三栏样卷，零外部依赖）
 ```
 
 - 缺 pymupdf：`pip install pymupdf`（或 `pip install -r requirements.txt`）。
 - 扫描版另装 OCR 引擎（推荐）：`pip install rapidocr-onnxruntime`；不装则只能人工看图。
 - 自检不通过先修环境，**不要带着坏环境开始校对**。
 - 有私有黄金样卷时：`python scripts/run_regression.py --pdf 原稿.pdf`（追加题数/跨页/错字命中检查）。
+- 批量校准（多份真卷）：`python tools/batch_audit.py 试卷目录 -o 报告 --cut`，先看 `audit.md` 的疑似问题。
 
 ## 工作流
 
@@ -45,7 +46,7 @@ python scripts/run_regression.py        # 35 项全流程自检（内置单栏+�
 
 ```
 Task Progress:
-- [ ] 0. 环境自检：validate_skill.py + run_regression.py（35 项全过）
+- [ ] 0. 环境自检：validate_skill.py + run_regression.py（36 项全过）
 - [ ] 1. 识别文档：prepare_input（图片/DOCX→PDF）→ OCR（扫描版）→ extract_pdf（文本+逐页图，栏感知）→ cut_questions（每题小图 + 答案区拆分）
 - [ ] 2. 判断模式：看 answers.json / 搜"答案/解析/参考答案"；无答案＝模式A，含答案＝模式B（答案分离在另一文件？先 align_answers.py 配对）
 - [ ] 3. 拆题建清单：题号、页码、栏、是否含答案、题型（cut_questions 输出）
@@ -243,7 +244,7 @@ results.json 字段：
 
 ## 速查与参考（一层引用）
 
-- 工具脚本（scripts/）：`prepare_input.py` 图片/DOCX→PDF｜`ocr_pdf.py` 扫描版 OCR｜`extract_pdf.py` 识别｜`cut_questions.py` 栏感知切题 + 答案区拆分｜`align_answers.py` 答案分离对齐｜`search_original.py` 原题检索｜`diff_question.py` 原题差异定位｜`make_review.py` HTML 审阅台｜`locate.py` 批注定位｜`draw_annotations.py` 批注生成（含三重检查）｜`make_report.py` 报告(md+HTML)｜`make_solver_tasks.py` 盲解任务｜`compare_answers.py` 盲解比对｜`typo_scan.py` 错别字筛查｜`verify_examples.py` 验证模板｜`run_regression.py` 回归测试（35 项）｜`validate_skill.py` 结构自检｜`recognition.py` 栏检测/阅读顺序库
+- 工具脚本（scripts/）：`prepare_input.py` 图片/DOCX→PDF｜`ocr_pdf.py` 扫描版 OCR｜`extract_pdf.py` 识别｜`cut_questions.py` 栏感知切题 + 答案区拆分｜`align_answers.py` 答案分离对齐｜`search_original.py` 原题检索｜`diff_question.py` 原题差异定位｜`make_review.py` HTML 审阅台｜`locate.py` 批注定位｜`draw_annotations.py` 批注生成（含三重检查）｜`make_report.py` 报告(md+HTML)｜`make_solver_tasks.py` 盲解任务｜`compare_answers.py` 盲解比对｜`typo_scan.py` 错别字筛查｜`verify_examples.py` 验证模板｜`run_regression.py` 回归测试（36 项）｜`validate_skill.py` 结构自检｜`recognition.py` 栏检测/阅读顺序库
 - 题目/答案错误完整清单与初中各模块易错点：[references/error-checklist.md](references/error-checklist.md)
 - 各题型核验配方（含可直接改的代码模板）：[references/verification-recipes.md](references/verification-recipes.md)
 - 识别精度、OCR、版面与公式工具选型：[references/recognition.md](references/recognition.md)
@@ -257,7 +258,7 @@ results.json 字段：
 3. 视觉识别的数字要复核（0/6、1/7、3/8、9/7），拿不准就放大再看。
 4. 原题官方答案也可能多值（"23或32"很常见），这也印证"多解正常"；与自算矛盾时做第三遍验算再下结论。
 5. 扫描版必须先 OCR，且 OCR 的数字每道题人工瞄一眼再把关。
-6. **改完任何脚本，先跑 `python scripts/run_regression.py`**（内置单栏+双栏+三栏样卷 35 项，零外部依赖），全过再交付；有私有样卷时再加 `--pdf` 跑黄金回归。
+6. **改完任何脚本，先跑 `python scripts/run_regression.py`**（内置单栏+双栏+三栏样卷 36 项，零外部依赖），全过再交付；有私有样卷时再加 `--pdf` 跑黄金回归。
 7. **原题检索与差异只是"线索"**：`diff_question.py` 的"关键数字差异"也必须回图 + 看答案 + 第三来源复核；**绝不因与网上原题不同就直接判错**。
 8. **多栏卷必须检查 `column` 与裁剪图**：栏检测误判会导致题文/配图串栏，发现串栏立即 `--no-columns` 或人工设栏后重切。
 9. `typo_scan.py` 与 `compare_answers.py` 的输出都只是**候选**：错字候选回图复核；盲解不一致一律先列🟠存疑复核，绝不直接判官方错。

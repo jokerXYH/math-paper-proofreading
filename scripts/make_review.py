@@ -165,6 +165,8 @@ def merge(args):
             "qno": qno, "page": q.get("page"), "column": q.get("column"),
             "page_w": q.get("page_w") or sizes.get(q.get("page"), {}).get("w"),
             "page_h": q.get("page_h") or sizes.get(q.get("page"), {}).get("h"),
+            "section": q.get("section", ""),
+            "likely_question": q.get("likely_question", True),
             "dedupe_rect": q.get("rect"), "text": local_text,
             "crop": file_uri(crop) if args.embed else "",
             "issues": issues,
@@ -375,7 +377,8 @@ function renderList(){
       <div class="qno">${q.qno}</div>
       <div style="flex:1;min-width:0">
         <div style="display:flex;gap:6px;align-items:center">${badge(st)}
-          <span class="meta">第${q.page}页${q.column===1?' · 右栏':''}${sim!=null?` · 相似 ${Number(sim).toFixed(2)}`:''}</span></div>
+          ${q.likely_question===false?'<span class="badge b-unchecked">疑非题目</span>':''}
+          <span class="meta">第${q.page}页${q.column!=null?` · 第${q.column+1}栏`:''}${sim!=null?` · 相似 ${Number(sim).toFixed(2)}`:''}</span></div>
         <div class="txt">${esc(q.text||'')||'<i>无文本</i>'}</div>
       </div></div>`;
   }).join('') : '<div class="empty">没有匹配的题目</div>';
@@ -406,7 +409,7 @@ function renderDetail(){
   const hasDiff=!!(diff.right_html);
   box.innerHTML=`
     <div class="qhead"><h2>第 ${q.qno} 题</h2>${badge(st)}
-      <span class="meta">第 ${q.page} 页${q.column===1?' · 右栏':''}</span>
+      <span class="meta">第 ${q.page} 页${q.column!=null?` · 第${q.column+1}栏`:''}${q.section?` · ${esc(q.section)}`:''}</span>
       <div class="tabs">
         <button id="btnPrev">↑ 上一题</button><button id="btnNext">下一题 ↓</button>
       </div>
