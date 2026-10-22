@@ -363,6 +363,30 @@ def main():
     flags = [q.get("likely_question") for q in kq]
     check("17 知识清单条目标注为非题目", flags == [False, True], str(flags))
 
+    # ---- 18) 题号重复（多章节）时 qid 仍唯一，盲解任务不互相覆盖 ----
+    dup_pdf = os.path.join(OUT, "_sample", "dup_qno.pdf")
+    dd = pymupdf.open()
+    dp = dd.new_page(width=595, height=842)
+    dp.insert_text((60, 70), "练习", fontsize=13, fontname="china-s")
+    dp.insert_text((60, 100), "1．计算 (-2)^3＝（　　）", fontsize=11, fontname="china-s")
+    dp.insert_text((60, 125), "1．若 x+1=2，求 x．", fontsize=11, fontname="china-s")
+    dd.save(dup_pdf)
+    dd.close()
+    dup_cut = os.path.join(OUT, "dup_cut")
+    run([py, os.path.join(HERE, "cut_questions.py"), dup_pdf, "-o", dup_cut, "--dpi", "70"])
+    dq_p = os.path.join(dup_cut, "questions.json")
+    dq = json.load(open(dq_p, encoding="utf-8")) if os.path.exists(dq_p) else []
+    qids = [q.get("qid") for q in dq]
+    check("18a 题号重复时 qid 唯一",
+          [q["qno"] for q in dq] == [1, 1] and len(set(qids)) == 2, str((qids, [q["qno"] for q in dq])))
+    dup_tasks = os.path.join(OUT, "dup_tasks")
+    run([py, os.path.join(HERE, "make_solver_tasks.py"), dq_p, "-o", dup_tasks])
+    di_p = os.path.join(dup_tasks, "index.json")
+    di = json.load(open(di_p, encoding="utf-8")) if os.path.exists(di_p) else []
+    all_ids = [x for it in di for x in it.get("qid", [])]
+    check("18b 盲解任务按 qid 保留两题", len(all_ids) == 2 and len(set(all_ids)) == 2,
+          str(all_ids))
+
     # ---- 汇总 ----
     print("\n" + "=" * 60)
     fails = [n for n, ok, _ in results if ok is False]

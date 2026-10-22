@@ -136,13 +136,19 @@ def merge(args):
         k = first_int(it.get("qno"))
         (issues_by_q.setdefault(k, []) if k else global_issues).append(it)
     verified_q = {first_int(v) for v in results.get("verified", []) if first_int(v)}
-    diff_by_q = {first_int(d.get("qno")): d for d in diff.get("items", [])}
+    diff_by_q = {(d.get("qid") or first_int(d.get("qno"))): d
+                 for d in diff.get("items", [])}
 
-    questions = []
-    for q in qs:
+    questions, used_issue, used_pass = [], set(), set()
+    for idx, q in enumerate(qs):
         qno = q.get("qno")
-        issues = issues_by_q.get(qno, [])
-        d = diff_by_q.get(qno, {})
+        qid = q.get("qid") or f"P{q.get('page')}-{idx + 1:03d}"
+        issues = []
+        if qno not in used_issue:
+            issues = issues_by_q.get(qno, [])
+            if issues:
+                used_issue.add(qno)
+        d = diff_by_q.get(qid) or diff_by_q.get(qno) or {}
         status = "unchecked"
         lv = [i.get("level") for i in issues]
         if "error" in lv:
@@ -151,8 +157,9 @@ def merge(args):
             status = "doubt"
         elif "hint" in lv:
             status = "hint"
-        elif qno in verified_q:
+        elif qno in verified_q and qno not in used_pass:
             status = "pass"
+            used_pass.add(qno)
         local_text = q.get("text", "")
         dl, dr = build_diff_html(d.get("local_norm") or local_text,
                                  d.get("original_norm") or d.get("original_text", ""),
@@ -162,12 +169,14 @@ def merge(args):
             base = os.path.dirname(os.path.abspath(args.questions)) if args.questions else "."
             crop = os.path.normpath(os.path.join(base, crop))
         questions.append({
+            "qid": qid,
             "qno": qno, "page": q.get("page"), "column": q.get("column"),
             "page_w": q.get("page_w") or sizes.get(q.get("page"), {}).get("w"),
             "page_h": q.get("page_h") or sizes.get(q.get("page"), {}).get("h"),
             "section": q.get("section", ""),
             "likely_question": q.get("likely_question", True),
             "dedupe_rect": q.get("rect"), "text": local_text,
+            "text_full": q.get("text_full") or local_text,
             "crop": file_uri(crop) if args.embed else "",
             "issues": issues,
             "diff": {"verdict": d.get("verdict", ""), "similarity": d.get("similarity"),
@@ -184,8 +193,8 @@ def merge(args):
             if not m:
                 continue
             pno = int(m.group(1))
-            rects = [{"qno": q["qno"], "rect": q["dedupe_rect"], "status": q["status"],
-                      "pw": q.get("page_w"), "ph": q.get("page_h")}
+            rects = [{"qid": q["qid"], "qno": q["qno"], "rect": q["dedupe_rect"],
+                      "status": q["status"], "pw": q.get("page_w"), "ph": q.get("page_h")}
                      for q in questions if q["page"] == pno and q["dedupe_rect"]]
             pages.append({"page": pno, "img": file_uri(os.path.join(args.pages, fn), 1500),
                           "rects": rects})
@@ -334,8 +343,8 @@ const state = {filter:'all', q:null, mode:'list', query:''};
 const LEVEL = {error:['错误','b-error'],doubt:['存疑','b-doubt'],hint:['提示','b-hint'],
                pass:['已核验','b-pass'],unchecked:['未核对','b-unchecked']};
 
-function statusOf(q){ return (overrides[q.qno] && overrides[q.qno].status) || q.status; }
-function noteOf(q){ return (overrides[q.qno] && overrides[q.qno].note) || ''; }
+function statusOf(q){ return (overrides[q.qid] && overrides[q.qid].status) || q.status; }
+function noteOf(q){ return (overrides[q.qid] && overrides[q.qid].note) || ''; }
 function esc(s){ const d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
 function badge(st){ const [t,c]=LEVEL[st]||LEVEL.unchecked; return `<span class="badge ${c}">${t}</span>`; }
 function counts(){
@@ -373,7 +382,7 @@ function renderList(){
   const items=filtered();
   document.getElementById('list').innerHTML = items.length ? items.map(q=>{
     const st=statusOf(q), sim=q.diff.similarity;
-    return `<div class="qitem ${state.q===q.qno?'sel':''}" data-q="${q.qno}">
+    return `<div class="qitem ${state.q===q.qid?'sel':''}" data-id="${q.qid}">
       <div class="qno">${q.qno}</div>
       <div style="flex:1;min-width:0">
         <div style="display:flex;gap:6px;align-items:center">${badge(st)}
@@ -382,7 +391,7 @@ function renderList(){
         <div class="txt">${esc(q.text||'')||'<i>无文本</i>'}</div>
       </div></div>`;
   }).join('') : '<div class="empty">没有匹配的题目</div>';
-  document.querySelectorAll('.qitem').forEach(el=>el.onclick=()=>select(Number(el.dataset.q)));
+  document.querySelectorAll('.qitem').forEach(el=>el.onclick=()=>select(el.dataset.id));
 }
 function renderGlobal(){
   const g=DATA.global_issues||[];
@@ -402,7 +411,7 @@ function issueHtml(i){
 }
 function renderDetail(){
   const box=document.getElementById('detail');
-  const q=DATA.questions.find(x=>x.qno===state.q);
+  const q=DATA.questions.find(x=>x.qid===state.q);
   if(!q){ box.innerHTML='<div class="empty">从左栏选择一道题（↑/↓ 或 j/k 切换）</div>'; return; }
   const st=statusOf(q);
   const diff=q.diff||{}, src=diff.source||{};
@@ -421,6 +430,7 @@ function renderDetail(){
       <div>
         <h4 style="margin:0 0 6px;font-size:12px;color:var(--muted)">识别文本（本地）</h4>
         <div class="textbox">${esc(q.text||'（空）')}</div>
+        ${q.text_full && q.text_full!==q.text ? `<details style="margin-top:8px"><summary class="meta" style="cursor:pointer">完整文本（含答案/解答）</summary><div class="textbox" style="margin-top:6px">${esc(q.text_full)}</div></details>`:''}
         ${q.issues&&q.issues.length?`<h4 style="margin:12px 0 4px;font-size:12px;color:var(--muted)">批注问题</h4>
           ${q.issues.map(issueHtml).join('')}`:''}
         ${diff.issues&&diff.issues.length?`<h4 style="margin:12px 0 4px;font-size:12px;color:var(--muted)">与原题的差异线索</h4>
@@ -449,12 +459,12 @@ function renderDetail(){
     </div>
     <textarea id="note" placeholder="写复核备注：错在哪、依据、最终结论…">${esc(noteOf(q))}</textarea>`;
   document.querySelectorAll('[data-set]').forEach(b=>b.onclick=()=>{
-    overrides[q.qno]=overrides[q.qno]||{}; overrides[q.qno].status=b.dataset.set;
-    overrides[q.qno].note=document.getElementById('note').value;
+    overrides[q.qid]=overrides[q.qid]||{}; overrides[q.qid].status=b.dataset.set;
+    overrides[q.qid].note=document.getElementById('note').value;
     persist(); render();
   });
   document.getElementById('saveNote').onclick=()=>{
-    overrides[q.qno]=overrides[q.qno]||{}; overrides[q.qno].note=document.getElementById('note').value;
+    overrides[q.qid]=overrides[q.qid]||{}; overrides[q.qid].note=document.getElementById('note').value;
     persist(); flash('备注已保存');
   };
   document.getElementById('exportBtn').onclick=exportJson;
@@ -466,18 +476,18 @@ function renderDetail(){
 }
 function step(d){
   const items=filtered(); if(!items.length) return;
-  let i=items.findIndex(x=>x.qno===state.q);
-  i=(i+d+items.length)%items.length; select(items[i].qno);
+  let i=items.findIndex(x=>x.qid===state.q);
+  i=(i+d+items.length)%items.length; select(items[i].qid);
 }
-function select(qno){
-  state.q=qno; state.mode='list';
+function select(qid){
+  state.q=qid; state.mode='list';
   document.getElementById('tabList').classList.add('on');
   document.getElementById('tabPage').classList.remove('on');
   document.getElementById('detail').style.display='block';
   document.getElementById('pageMode').style.display='none';
   renderList(); renderDetail();
   const el=document.querySelector('.qitem.sel'); if(el) el.scrollIntoView({block:'nearest'});
-  history.replaceState(null,'','#q='+qno);
+  history.replaceState(null,'','#q='+encodeURIComponent(qid));
 }
 function renderPages(){
   const box=document.getElementById('pageMode');
@@ -488,13 +498,13 @@ function renderPages(){
       const [x0,y0,x1,y1]=r.rect;
       const PW=r.pw||595, PH=r.ph||842;
       const L=x0/PW*100,T=y0/PH*100,W=(x1-x0)/PW*100,H=(y1-y0)/PH*100;
-      return `<div class="box ${esc(r.status||'')}" data-q="${r.qno}" style="left:${L}%;top:${T}%;width:${W}%;height:${H}%">
+      return `<div class="box ${esc(r.status||'')}" data-id="${r.qid}" style="left:${L}%;top:${T}%;width:${W}%;height:${H}%">
         <span>${r.qno}</span></div>`;
     }).join('');
     return `<div class="pagewrap"><img src="${p.img}" alt="第${p.page}页">${boxes}</div>`;
   }).join('');
   box.querySelectorAll('.box').forEach(b=>b.onclick=()=>{
-    select(Number(b.dataset.q));
+    select(b.dataset.id);
   });
 }
 function render(){
@@ -510,7 +520,7 @@ function flash(msg){
 }
 function exportJson(){
   const out={title:DATA.title,source:DATA.source,exported:new Date().toISOString(),
-    questions:DATA.questions.map(q=>({qno:q.qno,page:q.page,auto_status:q.status,
+    questions:DATA.questions.map(q=>({qid:q.qid,qno:q.qno,page:q.page,auto_status:q.status,
       status:statusOf(q),note:noteOf(q),issues:q.issues,
       diff:{verdict:q.diff.verdict,similarity:q.diff.similarity,issues:q.diff.issues,
             source:q.diff.source}}))};
@@ -542,12 +552,12 @@ document.addEventListener('keydown',e=>{
   if(e.key==='4')  setKey('pass');
 });
 function setKey(st){
-  const q=DATA.questions.find(x=>x.qno===state.q); if(!q) return;
-  overrides[q.qno]=overrides[q.qno]||{}; overrides[q.qno].status=st;
-  overrides[q.qno].note=noteOf(q); persist(); render();
+  const q=DATA.questions.find(x=>x.qid===state.q); if(!q) return;
+  overrides[q.qid]=overrides[q.qid]||{}; overrides[q.qid].status=st;
+  overrides[q.qid].note=noteOf(q); persist(); render();
 }
 const hash=new URLSearchParams(location.hash.replace('#',''));
-if(hash.get('q')) state.q=Number(hash.get('q'));
+if(hash.get('q')) state.q=decodeURIComponent(hash.get('q'));
 render();
 if(state.q) select(state.q);
 </script>

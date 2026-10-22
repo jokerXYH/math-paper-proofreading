@@ -2,7 +2,7 @@
 
 > 面向**初中数学**试卷的「题目 + 答案」双模式校对 Agent Skill：
 > 识别 PDF → 逐题核对 → 原题检索与差异定位 → 红蓝批注写回 PDF → 单文件 HTML 审阅台。
-> 主打**菁优网题源试卷**的教研校对场景；支持双栏版面、扫描版 OCR，开箱自带 36 项自检。
+> 主打**菁优网题源试卷**的教研校对场景；支持双栏版面、扫描版 OCR，开箱自带 38 项自检。
 
 [![version](https://img.shields.io/badge/version-2.2.0-blue)](CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -22,7 +22,7 @@
 | 🖥️ **HTML 审阅台** | 单文件交互页：题目列表 + 小图 + 识别文本 + 原题对照（差异高亮）+ 问题卡 + 整页定位；复核结果可导出 JSON |
 | 📊 **报告** | 单文件 HTML 报告：每题一张卡（题目小图 + 错因 + 正确答案 + 依据），可直接发人 |
 | 📏 **判定纪律** | **多解/答案不唯一 ≠ 错误**：只标🔵提示（蓝）；只有题目真错、答案真错、答案不全才标🔴（红） |
-| 🧪 **可回归** | 内置单栏 + 双栏 + 三栏样卷，clone 下来一行命令跑完 36 项自检 |
+| 🧪 **可回归** | 内置单栏 + 双栏 + 三栏样卷，clone 下来一行命令跑完 38 项自检 |
 
 ## 工作流
 
@@ -73,7 +73,7 @@ pip install -r requirements.txt   # 等价于 pip install pymupdf
 ```bash
 cd math-paper-proofreading
 python scripts/validate_skill.py    # 结构 / 引用 / 脚本可用性
-python scripts/run_regression.py    # 36 项全流程自检（内置单栏+双栏+三栏样卷，无需准备试卷）
+python scripts/run_regression.py    # 38 项全流程自检（内置单栏+双栏+三栏样卷，无需准备试卷）
 ```
 
 全部 PASS 即可开工；改完任何脚本后也跑这两条。
@@ -147,7 +147,7 @@ python scripts/run_regression.py --pdf 一份测试卷.pdf
 | `typo_scan.py` | **错别字筛查**：规则高召回 + LLM 通读提示词 |
 | `verify_examples.py` | 6 类常考题的程序化验证模板（程序框图/数位整除/周期/集合/公式…） |
 | `recognition.py` | 版面库：栏检测、XY-cut 阅读顺序、题号锚定（供其它脚本调用） |
-| `run_regression.py` | 36 项自检（内置单栏+双栏+三栏样卷；`--pdf` 追加黄金样卷回归） |
+| `run_regression.py` | 38 项自检（内置单栏+双栏+三栏样卷；`--pdf` 追加黄金样卷回归） |
 | `validate_skill.py` | 技能结构 / frontmatter / 引用 / 脚本 `--help` / 仓库卫生自检 |
 | `tools/batch_audit.py` | **批量体检**：一次跑多份 PDF，输出多栏页/题号/0 号误判/回退/扫描件提示 |
 
@@ -196,6 +196,9 @@ A：优先 `pip install rapidocr-onnxruntime`（Apache-2.0、CPU 快、约 80MB�
 
 **Q：答案卷是 3 栏/多栏，能自动处理吗？**
 A：支持 1–4 栏自动检测（真卷答案册常见 3 栏），切图按栏裁剪、不串栏。超过 4 栏或栏缝被图形堵死时，脚本会告警；可用 `--no-columns` 强制单栏后人工核对。
+
+**Q：一卷里题号重复（每章节都从 1 开始）怎么办？**
+A：每题都有全局唯一 `qid`（Q001…）。盲解任务书、`solver_answers.json`、检索与差异结果都用 `qid` 关联，题号只用于显示，不会互相覆盖。
 
 **Q：拍照/手写试卷能自动校对吗？**
 A：不能可靠自动校对。手写体 OCR 置信度通常很低，脚本会明确告警"疑似手写/拍照"；请人工转录题干，或提供清晰扫描件/原始 PDF。

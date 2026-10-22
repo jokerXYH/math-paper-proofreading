@@ -337,10 +337,11 @@ def main():
         if args.limit_q:
             qs = qs[:args.limit_q]
         for q in qs:
-            items.append({"qno": q.get("qno"), "local_text": q.get("text", ""),
+            items.append({"qid": q.get("qid"), "qno": q.get("qno"),
+                          "local_text": q.get("text", ""),
                           "page": q.get("page")})
     elif args.text:
-        items.append({"qno": 1, "local_text": args.text, "page": None})
+        items.append({"qid": "Q001", "qno": 1, "local_text": args.text, "page": None})
     else:
         sys.exit("请提供 --questions 或 --text")
 
@@ -352,7 +353,7 @@ def main():
             it["results"] = []
             continue
         it["query"] = query
-        md.append(f"## 第{it['qno']}题（第{it['page'] or '?'}页）")
+        md.append(f"## {it.get('qid') or ('第' + str(it['qno']) + '题')}（原题号 {it['qno']}，第{it['page'] or '?'}页）")
         md.append(f"- 题干：{query}")
         found = []
         for p in providers:

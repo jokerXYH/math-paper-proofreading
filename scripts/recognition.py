@@ -228,20 +228,25 @@ def assign_columns(lines, columns):
 
 
 def _left_margins(lines, columns):
-    """各栏正文左边距（取 20% 分位，避开缩进段落）。"""
+    """各栏正文左边距 + 全页左边距（通栏行用）。"""
+    xs_all = sorted(l["x0"] for l in lines)
+    global_left = xs_all[max(0, int(len(xs_all) * 0.2))] if xs_all else 0
     if not columns:
-        xs = sorted(l["x0"] for l in lines)
-        return [xs[max(0, int(len(xs) * 0.2))] if xs else 0]
+        return [global_left], global_left
     margins = []
     for c in range(len(columns)):
         xs = sorted(l["x0"] for l in lines if l["col"] == c)
         margins.append(xs[max(0, int(len(xs) * 0.2))] if xs else columns[c][0])
-    return margins
+    return margins, global_left
 
 
 def question_anchors(lines, columns):
-    """题号锚点：行首数字 + 栏内左边距 + 字号合理 + 非选项/非小题。"""
-    margins = _left_margins(lines, columns)
+    """题号锚点：行首数字 + 栏内左边距 + 字号合理 + 非选项/非小题。
+
+    通栏行（col=None，如"题干通栏 + 解答双栏"的卷子）也允许成为题号，
+    只要它从全页左边距起笔。
+    """
+    margins, global_left = _left_margins(lines, columns)
     anchors = []
     for i, l in enumerate(lines):
         t = l["text"]
@@ -256,9 +261,8 @@ def question_anchors(lines, columns):
         if t[m.end():m.end() + 1].isdigit():   # 0.000007 这类小数，不是题号
             continue
         col = l["col"]
-        if col is None:          # 通栏行里的编号不作为题号（多为标题/说明）
-            continue
-        margin = margins[col] if col < len(margins) else 0
+        margin = global_left if col is None else (
+            margins[col] if col < len(margins) else global_left)
         if l["x0"] > margin + MARGIN_TOL:
             continue
         if l["size"] and (l["size"] < 6.5 or l["size"] > 22):
@@ -285,8 +289,12 @@ def question_anchors(lines, columns):
             "x0": l["x0"], "y0": l["y0"], "x1": l["x1"], "y1": l["y1"],
             "col": col, "size": l["size"], "bold": l["bold"], "line_index": i,
         })
-    # 按栏索引 + 栏内 y 排序（N 栏通用）
-    anchors.sort(key=lambda a: (a["col"] if isinstance(a["col"], int) else 99, a["y0"]))
+    # 排序：纯多栏页按"栏优先"；含通栏题干的混排页按 y（自上而下）
+    if any(a["col"] is None for a in anchors):
+        anchors.sort(key=lambda a: (round(a["y0"], 1),
+                                    a["col"] if a["col"] is not None else -1))
+    else:
+        anchors.sort(key=lambda a: (a["col"], round(a["y0"], 1)))
     return anchors
 
 

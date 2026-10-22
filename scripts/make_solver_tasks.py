@@ -30,9 +30,10 @@ PROMPT_HEAD = """你是一位初中数学老师，请**独立盲解**下列题�
 1. 不要上网搜索，不要引用任何"参考答案"；
 2. 做题前先自己完整推演一遍（可打草稿但不用输出过程）；
 3. 输出格式严格如下（每行一题，不要多余解释）：
-   题{qno}：<答案>
+   题{qid}：<答案>
+   （题号用题目前面的 Q 编号，如 Q001；原题号只用于对照）
 4. 多解题目写全所有解（用"、"分隔）；填空题带单位的要带单位；
-5. 完成后把结果保存为 `solver_answers.json`（形如 {{"1": "231", "2": "B"}}）。
+5. 完成后把结果保存为 `solver_answers.json`（形如 {{"Q001": "231", "Q002": "B"}}）。
 
 【题目清单】（共 {n} 题）
 """
@@ -54,36 +55,41 @@ def main():
     qs, seen, dropped = [], set(), []
     for q in raw:
         qno = q.get("qno")
-        if (not str(q.get("text", "")).strip()) or qno in seen \
+        key = q.get("qid") or qno
+        if (not str(q.get("text", "")).strip()) or key in seen \
                 or (q.get("likely_question") is False and not args.include_nonquestions):
-            dropped.append(qno)
+            dropped.append(key)
             continue
-        seen.add(qno)
+        seen.add(key)
         qs.append(q)
     if not qs:
         print("没有可用的题目：questions.json 为空或缺少 text 字段")
         sys.exit(2)
     if dropped:
-        print(f"⚠ 跳过 {len(dropped)} 条重复/空白题目（题号: "
+        print(f"⚠ 跳过 {len(dropped)} 条重复/空白/疑似非题目（编号: "
               + ",".join(str(x) for x in dropped[:10]) + "）")
 
     index = []
     for t, i in enumerate(range(0, len(qs), args.per_task), 1):
         batch = qs[i:i + args.per_task]
         name = f"task_{t:02d}.md"
-        lines = [PROMPT_HEAD.format(qno="{题号}", n=len(batch))]
+        lines = [PROMPT_HEAD.format(qid="Q001", n=len(batch))]
         for q in batch:
-            lines.append(f"题{q['qno']}（第{q['page']}页）：{q.get('text', '')[:400]}")
+            qid = q.get("qid") or f"Q{i + 1:03d}"
+            lines.append(f"题{qid}（原题号{q.get('qno')}，第{q.get('page')}页）："
+                         f"{q.get('text', '')[:400]}")
         path = os.path.join(args.out, name)
         open(path, "w", encoding="utf-8").write("\n".join(lines))
-        index.append({"task": name, "qn": [q["qno"] for q in batch],
+        index.append({"task": name,
+                      "qid": [q.get("qid") or f"Q{i + 1:03d}" for q in batch],
+                      "qn": [q["qno"] for q in batch],
                       "pages": [q["page"] for q in batch]})
     json.dump(index, open(os.path.join(args.out, "index.json"), "w", encoding="utf-8"),
               ensure_ascii=False, indent=1)
     print(f"生成 {len(index)} 份任务书 → {os.path.abspath(args.out)}")
     for it in index:
-        print(f"  {it['task']}: 共{len(it['qn'])}题（第{it['pages'][0]}~{it['pages'][-1]}页，题号: "
-              + ",".join(str(q) for q in it['qn'][:10]) + ("…" if len(it['qn']) > 10 else "") + "）")
+        print(f"  {it['task']}: 共{len(it['qid'])}题（第{it['pages'][0]}~{it['pages'][-1]}页，"
+              "编号: " + ",".join(it['qid'][:10]) + ("…" if len(it['qid']) > 10 else "") + "）")
     print("\n使用方法：把 task_XX.md 的内容发给另一个模型/子代理（不给它答案），")
     print("收集其输出为 solver_answers.json 后，运行 compare_answers.py 交叉验证。")
 

@@ -212,7 +212,7 @@ def main():
 
     if args.local_text and args.original_text:
         res = assess(args.local_text, args.original_text)
-        res.update({"qno": 1, "local_text": args.local_text,
+        res.update({"qid": "Q001", "qno": 1, "local_text": args.local_text,
                     "original_text": args.original_text})
         print(json.dumps(res, ensure_ascii=False, indent=1))
         json.dump({"items": [res]}, open(os.path.join(args.out, "diff_results.json"),
@@ -232,16 +232,17 @@ def main():
         local = it.get("local_text", "")
         results = it.get("results") or []
         if not results:
-            items.append({"qno": it.get("qno"), "page": it.get("page"),
-                          "local_text": local, "verdict": "未检索到候选",
-                          "similarity": 0.0, "issues": [], "diff": []})
+            items.append({"qid": it.get("qid"), "qno": it.get("qno"),
+                          "page": it.get("page"), "local_text": local,
+                          "verdict": "未检索到候选", "similarity": 0.0,
+                          "issues": [], "diff": []})
             continue
         # 优先抓取正文，其次摘要
         best = max(results, key=lambda r: r.get("score", 0))
         orig = pick_relevant(best.get("fetched_text", ""), local) \
             or best.get("snippet") or best.get("title", "")
         res = assess(local, orig)
-        res.update({"qno": it.get("qno"), "page": it.get("page"),
+        res.update({"qid": it.get("qid"), "qno": it.get("qno"), "page": it.get("page"),
                     "local_text": local, "original_text": orig,
                     "source": {"url": best.get("url"), "title": best.get("title"),
                                "provider": best.get("source"),
@@ -271,7 +272,8 @@ def main():
     for x in items:
         if not x.get("diff") and not x.get("issues"):
             continue
-        tasks += [f"## 第{x['qno']}题（第{x.get('page') or '?'}页，相似度 {x.get('similarity', 0):.2f}）",
+        tasks += [f"## {x.get('qid') or ('第' + str(x['qno']) + '题')}"
+                  f"（原题号 {x['qno']}，第{x.get('page') or '?'}页，相似度 {x.get('similarity', 0):.2f}）",
                   f"- 本地：{x.get('local_text', '')[:300]}",
                   f"- 原题：{x.get('original_text', '')[:300]}"]
         for i in x.get("issues", []):

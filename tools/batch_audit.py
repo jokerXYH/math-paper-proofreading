@@ -37,7 +37,8 @@ import recognition as rec  # noqa: E402
 
 
 def audit_one(path, cut=False, out_dir=None):
-    name = os.path.splitext(os.path.basename(path))[0]
+    path = os.path.abspath(path)
+    name = os.path.splitext(os.path.basename(path))[0].strip() or "unnamed"
     doc = pymupdf.open(path)
     layouts = rec.analyze_document(doc)
     pages = len(doc)
@@ -90,6 +91,8 @@ def audit_one(path, cut=False, out_dir=None):
         qs_p = os.path.join(cut_dir, "questions.json")
         ans_p = os.path.join(cut_dir, "answers.json")
         item["cut_ok"] = r.returncode == 0
+        if r.returncode != 0:
+            item["cut_error"] = (r.stdout + r.stderr)[-400:]
         item["cut_questions"] = len(json.load(open(qs_p, encoding="utf-8"))) \
             if os.path.exists(qs_p) else 0
         item["cut_answers"] = len(json.load(open(ans_p, encoding="utf-8"))) \

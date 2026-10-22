@@ -59,6 +59,8 @@ SEC_LABEL_RE = re.compile(
 # 题干特征词：有这些词基本可以确认是题目
 QUESTION_HINT_RE = re.compile(
     r"[？?]|（\s*）|\(\s*\)|求|计算|解|若|已知|如图|下列|则|证明|画出|填空|选择|判断|化简")
+# 定义/概念句式：开头知识清单里常见，短句且无题干特征时判为非题目
+DEFINITION_RE = re.compile(r"叫做|叫作|称为|概念|定义|分为[两三四]类")
 
 
 # ---------------- 兼容旧接口（align_answers 等仍在用） ----------------
@@ -139,6 +141,8 @@ def region_of(lines, images, top, bottom, col_bounds, col):
     cx0, cx1 = col_bounds
 
     def in_col(l):
+        if col is None:
+            return True          # 通栏题：整页宽度都属于本题
         if l["col"] is None:
             # 通栏/跨栏行不属于任何单栏题目，排除（否则会把邻栏文字拼进本题）
             return l["x0"] >= cx0 - 4 and l["x1"] <= cx1 + 4
@@ -242,26 +246,46 @@ def main():
             continue
 
         for idx, a in enumerate(anchors):
-            col = a["col"] if a["col"] is not None else 0
-            cb = rec.column_bounds(lay["columns"], col, lay["w"], 10)
+            col = a["col"]
             top = a["y0"] - 6
-            same_col = [x for x in anchors[idx + 1:] if x["col"] == a["col"]]
-            if same_col:
-                bottom = same_col[0]["y0"] - 4
-            else:
-                bottom = rec.column_bottom(lay["lines"], col) + 4
+            next_any = anchors[idx + 1] if idx + 1 < len(anchors) else None
+            bottom_any = next_any["y0"] - 4 if next_any else lay["content_bottom"] + 4
+            if answer_from and pno == answer_from[0]:
+                bottom_any = min(bottom_any, answer_from[1] - 4)
+
+            # 通栏题干 + 多栏解答：本栏内出现"明显跨栏"的通栏行 → 整题按通栏处理
+            same_col = []
+            if col is not None:
+                same_col = [x for x in anchors[idx + 1:] if x["col"] == col]
+                col_bottom = same_col[0]["y0"] - 4 if same_col \
+                    else rec.column_bottom(lay["lines"], col) + 4
                 if answer_from and pno == answer_from[0]:
-                    bottom = min(bottom, answer_from[1] - 4)
+                    col_bottom = min(col_bottom, answer_from[1] - 4)
+                cb0 = rec.column_bounds(lay["columns"], col, lay["w"], 10)
+                cw = max(1.0, cb0[1] - cb0[0])
+                probe = [l for l in lay["lines"]
+                         if l["y0"] >= top - 2 and l["y1"] <= col_bottom + 2
+                         and (l["col"] == col or l["col"] is None)]
+                if any(l["col"] is None and (l["x1"] - l["x0"]) > 1.35 * cw
+                       for l in probe):
+                    col = None
+
+            cb = (lay["content_left"], lay["content_right"]) if col is None \
+                else rec.column_bounds(lay["columns"], col, lay["w"], 10)
+            if col is None:
+                bottom = bottom_any
+            else:
+                bottom = col_bottom
             if bottom - top < 22:
                 continue
-            reg = region_of(lay["lines"], lay["images"], top, bottom, cb, a["col"])
+            reg = region_of(lay["lines"], lay["images"], top, bottom, cb, col)
             if reg is None:
                 continue
 
             x0, y0, x1, y1 = reg["rect"]
             clip = pymupdf.Rect(
-                max(cb[0] - 4, x0 - 10), max(HEADER_Y, y0 - 4),
-                min(cb[1] + 4, x1 + 12), min(FOOTER_Y, y1 + 6))
+                max(cb[0] - 4, x0 - 10), max(0, y0 - 6),
+                min(cb[1] + 4, x1 + 12), min(lay["h"], y1 + 8))
             name = crop_name(pno, a["qno"])
             doc[pno - 1].get_pixmap(dpi=args.dpi, clip=clip).save(
                 os.path.join(crops_dir, name))
@@ -272,9 +296,13 @@ def main():
             sec = sec_by_idx.get(a["line_index"]) or ""
             has_hint = bool(QUESTION_HINT_RE.search(
                 lay["ordered"][a["line_index"]]["text"]))
-            likely = not (re.search(r"知识|方法|考点", sec) and not has_hint)
+            looks_def = (len(stem_text) < 80 and not has_hint
+                         and bool(DEFINITION_RE.search(stem_text)))
+            likely = not ((re.search(r"知识|方法|考点", sec) and not has_hint)
+                          or looks_def)
             questions.append({
-                "qno": a["qno"], "page": pno, "column": a["col"],
+                "qid": f"Q{len(questions) + 1:03d}",
+                "qno": a["qno"], "page": pno, "column": col,
                 "page_w": round(lay["w"], 1), "page_h": round(lay["h"], 1),
                 "rect": [round(v, 1) for v in clip],
                 "crop": os.path.join(crops_dir, name).replace("\\", "/"),
@@ -288,9 +316,9 @@ def main():
 
             # —— 跨栏延续：本栏最后一题触底，下一栏顶部还有无编号内容 ——
             ncols = len(lay["columns"])
-            if ncols and a["col"] is not None and a["col"] < ncols - 1 and not same_col \
-                    and bottom >= rec.column_bottom(lay["lines"], a["col"]) - 6:
-                next_col = a["col"] + 1
+            if ncols and col is not None and col < ncols - 1 and not same_col \
+                    and bottom >= rec.column_bottom(lay["lines"], col) - 6:
+                next_col = col + 1
                 right_anchors = [x for x in lay["anchors"] if x["col"] == next_col]
                 cut_y = right_anchors[0]["y0"] - 3 if right_anchors else FOOTER_Y
                 cont = [l for l in lay["lines"]
@@ -391,9 +419,9 @@ def main():
                     if not seg:
                         continue
                     x0, y0, x1, y1 = ln["bbox"]
-                    clip = pymupdf.Rect(max(18, x0 - 10), max(HEADER_Y, y0 - 4),
+                    clip = pymupdf.Rect(max(18, x0 - 10), max(0, y0 - 4),
                                         min(lay["w"] - 18, x1 + 12),
-                                        min(FOOTER_Y, y1 + 6))
+                                        min(lay["h"], y1 + 6))
                     name = crop_name(pno, int(m.group(1)), prefix="a")
                     page.get_pixmap(dpi=args.dpi, clip=clip).save(
                         os.path.join(crops_dir, name))
