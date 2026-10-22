@@ -28,26 +28,38 @@ import pymupdf
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import cut_questions as cq  # noqa: E402  复用题号锚点逻辑
+import cut_questions as cq  # noqa: E402  复用题号锚点/答案区逻辑
+import recognition as rec  # noqa: E402
 
 # 答案编号：数字 + .．、:：，且后面不是数字（排除小数 3.5、数字列表 1、2、3）
 MARK_RE = re.compile(r"(?<!\d)(\d{1,3})\s*[.．、:：]\s*(?!\d)")
 
 
 def questions_of(pdf_path):
-    """题目 PDF → 按顺序的题号列表 [{qno, page, text}]"""
+    """题目 PDF → 按阅读顺序的题号列表 [{qno, page}]（栏感知）"""
     doc = pymupdf.open(pdf_path)
     out = []
+    layouts = rec.analyze_document(doc)
     for i, page in enumerate(doc):
-        lines, images = cq.collect_elements(page)
-        anchors = cq.find_anchors(lines)
-        for a in anchors:
-            out.append({"qno": a["qno"], "page": i + 1})
+        lay = layouts[i]
+        anchors = lay["anchors"]
+        ai = cq.find_answer_start(lay["ordered"])   # 卷末答案区不算题目
+        if ai is not None:
+            cut_y = lay["ordered"][ai]["y0"]
+            anchors = [a for a in anchors if a["y0"] < cut_y - 2]
+            out.extend({"qno": a["qno"], "page": i + 1, "column": a["col"]}
+                       for a in anchors)
+            break
+        out.extend({"qno": a["qno"], "page": i + 1, "column": a["col"]}
+                   for a in anchors)
     return out
 
 
 def answers_of(path):
     """答案文件（pdf 或 txt）→ [{qno, text, page}]，支持行首块式与行内连续式"""
+    ext = os.path.splitext(path)[1].lower()
+    if ext not in (".pdf", ".txt", ".md"):
+        sys.exit(f"不支持的答案文件类型: {ext}（请用 PDF / TXT / MD）")
     lines = []
     if path.lower().endswith(".pdf"):
         doc = pymupdf.open(path)

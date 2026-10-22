@@ -21,6 +21,20 @@
 
 ## 三、搜索渠道（按成功率排序）
 
+0. **本技能脚本**（可批量、带缓存/限速）：
+
+   ```bash
+   # 默认 bing + offline（生成可点链接）；菁优网需登录 Cookie
+   python scripts/search_original.py --questions 输出/cut/questions.json -o 输出/search
+   # 抓取前 2 条候选正文，便于 diff_question 做逐字比对
+   python scripts/search_original.py --questions ... --fetch-top 2
+   python scripts/diff_question.py --originals 输出/search/search_results.json -o 输出/diff
+   ```
+
+   - Windows 设 Cookie：`$env:JYEOO_COOKIE="..."`；macOS/Linux：`export JYEOO_COOKIE="..."`。
+   - 菁优网站内搜索常需登录/JS 渲染，脚本拿不到结果时，**直接用浏览器打开 `queries.md` 里的链接**人工核对。
+   - 自动化只做低频率单次查询（默认 1.2s 间隔 + 7 天缓存），请遵守目标网站条款。
+
 1. **搜索引擎摘要**（首选，快）：
    - websearch 工具直接查；
    - 备选：360（`https://www.so.com/s?q=...`，对国内教育站收录好）、Bing；百度/搜狗可能出验证码。

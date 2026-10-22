@@ -2,6 +2,9 @@
 tests/out/
 __pycache__/
 *.pyc
+.venv/
+venv/
+dist/
 
 # 本地参考资料（他人仓库，按需自行克隆）
 references/github/

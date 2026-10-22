@@ -1,6 +1,11 @@
 ---
 name: math-paper-proofreading
-description: 校对初中数学试卷/讲义/练习的题目与答案（支持 PDF、图片、DOCX）。两种模式：①纯题目时检查题干文字、题号、图文一致性、可解性；②带答案时逐题独立复算（手推 + Python 程序验证）并与菁优网等原题答案比对，判定答案错误、答案不全、存疑。产出红色批注版 PDF（红框 + 红字说明"错在哪、正确答案是什么"）、可视化标注图和结论汇总表。当用户要求"检查题目""校对试卷""查错""核对答案""答案对不对""把错误圈出来/做批注"等数学试题检查场景时使用，尤其针对初中数学、菁优网题源的试卷。
+description: 校对初中数学试卷/讲义/练习的题目与答案（PDF/图片/DOCX，支持双栏版面与扫描版 OCR）。两种模式：①纯题目时检查题干文字、题号、图文一致性、可解性；②带答案时逐题独立复算（手推 + Python 程序验证），并检索菁优网/网页原题、做逐字差异定位，判定答案错误、答案不全、存疑。产出红色批注版 PDF、单文件 HTML 审阅台（题目小图 + 原题对照 + 差异高亮 + 问题卡）和结论汇总表。当用户要求"检查题目""校对试卷""查错""核对答案""答案对不对""把错误圈出来/做批注""找原题比对"等数学试题检查场景时使用，尤其针对初中数学、菁优网题源的试卷。
+license: MIT
+metadata:
+  version: 2.2.0
+  author: jokerXYH
+  homepage: https://github.com/jokerXYH/math-paper-proofreading
 ---
 
 # 初中数学试卷校对（题目 + 答案双模式）
@@ -21,37 +26,61 @@ description: 校对初中数学试卷/讲义/练习的题目与答案（支持 P
 3. **可计算题优先写 Python 跑一遍**，不要只靠心算：枚举、模拟、周期检验最容易"看起来对"。
 4. 所有输出使用中文。
 
+## 第0步：环境与自检（每次开工先跑，10 秒）
+
+```bash
+python -c "import pymupdf, sys; print('pymupdf', pymupdf.__version__, sys.version)"  # 唯一必需依赖
+python scripts/validate_skill.py        # 结构/脚本/引用完整性自检
+python scripts/run_regression.py        # 35 项全流程自检（内置单栏+双栏+三栏样卷，零外部依赖）
+```
+
+- 缺 pymupdf：`pip install pymupdf`（或 `pip install -r requirements.txt`）。
+- 扫描版另装 OCR 引擎（推荐）：`pip install rapidocr-onnxruntime`；不装则只能人工看图。
+- 自检不通过先修环境，**不要带着坏环境开始校对**。
+- 有私有黄金样卷时：`python scripts/run_regression.py --pdf 原稿.pdf`（追加题数/跨页/错字命中检查）。
+
 ## 工作流
 
 复制清单跟踪进度：
 
 ```
 Task Progress:
-- [ ] 1. 识别文档：extract_pdf.py（文本+逐页图）→ cut_questions.py（每题小图）
-- [ ] 2. 判断模式：搜"答案/解析/参考答案"；无答案＝模式A，含答案＝模式B（答案分离在另一文件？先 align_answers.py 配对）
-- [ ] 3. 拆题建清单：题号、页码、是否含答案、题型（cut_questions 输出）
+- [ ] 0. 环境自检：validate_skill.py + run_regression.py（35 项全过）
+- [ ] 1. 识别文档：prepare_input（图片/DOCX→PDF）→ OCR（扫描版）→ extract_pdf（文本+逐页图，栏感知）→ cut_questions（每题小图 + 答案区拆分）
+- [ ] 2. 判断模式：看 answers.json / 搜"答案/解析/参考答案"；无答案＝模式A，含答案＝模式B（答案分离在另一文件？先 align_answers.py 配对）
+- [ ] 3. 拆题建清单：题号、页码、栏、是否含答案、题型（cut_questions 输出）
 - [ ] 4A. 模式A检查：题号系统 + 题干逐字（typo_scan 候选+回图复核）+ 图文一致 + 可解性
-- [ ] 4B. 模式B验证：逐题手推 → 程序验证 → 盲解交叉验证 → 菁优网/原题比对
+- [ ] 4B. 模式B验证：逐题手推 → 程序验证 → 盲解交叉验证 → 原题检索(search_original) → 差异定位(diff_question) → AI 判定
 - [ ] 5. 分级汇总：🔴错误 / 🟠存疑 / 🔵提示 / ✅通过
-- [ ] 6. 可视化：locate.py 定位 → draw_annotations.py 出批注版 PDF + 检查图
-- [ ] 7. 报告：make_report.py 出 markdown + 单文件 HTML 报告，预览给用户
+- [ ] 6. 可视化：make_review（HTML 审阅台，先看这里）→ locate 定位 → draw_annotations 出批注版 PDF
+- [ ] 7. 报告：make_report 出 markdown + 单文件 HTML 报告，预览给用户
 ```
 
 ### 第1步：识别文档
 
 ```bash
-python scripts/extract_pdf.py 试卷.pdf -o 输出目录 --dpi 160        # 全文+逐页图+题号诊断
+# 输入是图片 / 扫描件文件夹 / DOCX？先统一成 PDF（已是 PDF 则跳过）
+python scripts/prepare_input.py 试卷.docx -o 输出/input
+python scripts/prepare_input.py 扫描件目录/ -o 输出/input --name 试卷.pdf
+
+# 扫描版（无文本层）：先 OCR，产出可检索 PDF + 低置信行清单
+python scripts/ocr_pdf.py 试卷.pdf -o 输出/ocr          # 自动选 rapidocr/paddleocr/tesseract
+
+python scripts/extract_pdf.py 试卷.pdf -o 输出目录 --dpi 160        # 全文+逐页图+题号诊断（栏感知）
 python scripts/cut_questions.py 试卷.pdf -o 输出目录/cut --merge    # 题目级切图（逐题看图用这个）
 ```
 
-- **cut_questions.py 是逐题核对的主力**：每题一张小图（跨页题自动拼接为"合并"图），图形/表格绝不漏看；输出题号链诊断。
-- 文本层缺失（扫描版）会提示，走 references/toolchain.md 的 OCR 方案。
+- **cut_questions.py 是逐题核对的主力**：每题一张小图（跨页/跨栏题自动拼接为"合并"图），图形/表格绝不漏看；输出题号链诊断。
+- **多栏试卷已按栏切分**：`questions.json` 的 `column` 字段标明第几栏（支持 1–4 栏），裁剪不会串栏；栏检测误判时加 `--no-columns`。
+- **卷末"参考答案/解析"区会自动识别并拆到 `answers.json`**（答案小图 `crops/a_pgXX_qYY.png`），不再混进题目；若排版特殊被误拆，加 `--keep-answers` 回到旧行为，或直接按答案文件用 align_answers 处理。
+- 文本层缺失（扫描版）会提示；OCR 的低置信行见 `ocr/lines.json` 的 `low_confidence`，**数字必须回图复核**。
 - 局部放大用 `extract_pdf.py --crop 页码:x0,y0,x1,y1:备注`。
 
 ### 第2步：判断模式
 
 - 搜全文关键词：`答案`、`参考答案`、`解析`、`【答案】`。
 - 注意混合文档：题目中有个别答案、或答案在最后几页。
+- 已用 `cut_questions.py` 时先看 `answers.json`：非空说明卷末有答案区，可直接作为官方答案来源。
 - **答案与题目分离在两个文件**（题目 PDF + 答案 PDF/TXT）时，先自动配对：
 
 ```bash
@@ -99,7 +128,22 @@ python scripts/compare_answers.py --official 官方.json --solver solver_answers
 - 判定纪律：盲解与官方**不一致 → 列入🟠存疑**，人工第三遍复核后再下结论，**绝不因盲解不一致就直接判官方错**；
 - 多解答案顺序不同、B 与 B(2) 这类写法差异，比对器会自动识别为"一致"。
 
-4. **原题比对**：按 references/jyeoo-workflow.md 搜索菁优网/学科网原题与官方答案（第三证据）。
+4. **原题检索 + 差异定位（第三证据）**：
+
+```bash
+# 生成检索（默认 360 + bing + offline；菁优网需 Cookie：JYEOO_COOKIE）
+python scripts/search_original.py --questions 输出/cut/questions.json -o 输出/search --limit-q 10
+# 本地识别 vs 原题：数字/运算符/文字差异（只出证据）
+python scripts/diff_question.py --originals 输出/search/search_results.json -o 输出/diff
+```
+
+- `queries.md` 里有可点击链接；菁优网/学科网常需登录，**优先用浏览器打开人工核对**（或把 Cookie 配到环境变量）。
+- `ai_review_tasks.md` 是给模型/子代理的判定任务书：逐题输出
+  `{"qno","conclusion":"local_error|original_variant|both_uncertain|same","reason","confidence"}`。
+- 差异分级：数字不一致＝最高优先（0/6、1/7 最致命）；运算符/限定词次之；标点与空格基本可忽略。
+- **AI 判定纪律**：脚本只给"差异线索"，绝不自动判谁对。结合渲染图、答案与第三来源，逐条得出"本地错 / 原题版本不同 / 无法确认（存疑）"。
+- 原题也可能被题库二次编辑，**不能因为"和原题不一样"就直接判本地错**。
+
 5. **分类入表**：
    - 答案错误：给出"错在哪 + 正确答案 + 依据"；
    - 答案不全：列出完整解集（这属于答案问题！）；
@@ -107,7 +151,39 @@ python scripts/compare_answers.py --official 官方.json --solver solver_answers
    - 题目问题：沿用模式A的判定。
 6. 记录格式：`{题号, 我的独立答案, 文档答案, 是否一致, 验证方式（自算/程序/盲解/原题）, 备注}`。
 
-### 第6步：可视化批注（必交付）
+### 第5步：分级汇总
+
+逐题记录后按判定分级，宁可存疑不可误报：
+
+| 级别 | 使用条件 | 报告中颜色 |
+|---|---|---|
+| `error` | 题目真错 / 答案真错 / 答案不全（三项证据齐全） | 🔴 红 |
+| `doubt` | 自算与原题矛盾且第三遍未定、OCR 低置信未复核 | 🟠 橙 |
+| `hint` | 多解已写全、表述可优化、易错提醒 | 🔵 蓝 |
+| `pass` | 已独立复算 + 程序/原题验证通过 | ✅ 绿 |
+
+- 同一题既有题目问题又有答案问题 → 拆成两条 issue，不要合并描述。
+- 记录格式：`{题号, 我的独立答案, 文档答案, 是否一致, 验证方式（自算/程序/盲解/原题）, 备注}`。
+
+### 第6步：可视化（先审阅台，再批注 PDF）
+
+**6.1 单文件 HTML 审阅台（推荐先看这个）**
+
+```bash
+python scripts/make_review.py \
+  --questions 输出/cut/questions.json \
+  --results 输出/results.json \
+  --diff 输出/diff/diff_results.json \
+  --pages 输出/extract/pages \
+  --pdf 试卷.pdf \
+  -o 输出/审阅台.html
+```
+
+- 左侧题目列表（状态/相似度/搜索过滤），右侧：题目小图 + 识别文本 + 原题对照（数字差异高亮）+ 问题卡 + 来源链接；
+- 「整页定位」在页面图上叠加题框，点击跳题；键盘 `j/k` 切题、`1/2/3/4` 标状态；
+- 人工复核结果存 localStorage，可「导出复核 JSON」交回 AI；没有原题/差异时也能单独用。
+
+**6.2 红色批注版 PDF**
 
 **第一步用 locate.py 自动定位（不要再手填坐标）：**
 
@@ -167,10 +243,11 @@ results.json 字段：
 
 ## 速查与参考（一层引用）
 
-- 工具脚本（scripts/）：`extract_pdf.py` 识别｜`cut_questions.py` 题目级切图｜`align_answers.py` 答案分离对齐｜`locate.py` 批注定位｜`draw_annotations.py` 批注生成（含三重检查）｜`make_report.py` 报告(md+HTML)｜`make_solver_tasks.py` 盲解任务｜`compare_answers.py` 盲解比对｜`typo_scan.py` 错别字筛查｜`verify_examples.py` 验证模板｜`run_regression.py` 回归测试(17项)
+- 工具脚本（scripts/）：`prepare_input.py` 图片/DOCX→PDF｜`ocr_pdf.py` 扫描版 OCR｜`extract_pdf.py` 识别｜`cut_questions.py` 栏感知切题 + 答案区拆分｜`align_answers.py` 答案分离对齐｜`search_original.py` 原题检索｜`diff_question.py` 原题差异定位｜`make_review.py` HTML 审阅台｜`locate.py` 批注定位｜`draw_annotations.py` 批注生成（含三重检查）｜`make_report.py` 报告(md+HTML)｜`make_solver_tasks.py` 盲解任务｜`compare_answers.py` 盲解比对｜`typo_scan.py` 错别字筛查｜`verify_examples.py` 验证模板｜`run_regression.py` 回归测试（35 项）｜`validate_skill.py` 结构自检｜`recognition.py` 栏检测/阅读顺序库
 - 题目/答案错误完整清单与初中各模块易错点：[references/error-checklist.md](references/error-checklist.md)
 - 各题型核验配方（含可直接改的代码模板）：[references/verification-recipes.md](references/verification-recipes.md)
-- PDF 识别/OCR/公式识别工具与 GitHub 项目（含已下载的本地副本）：[references/toolchain.md](references/toolchain.md)
+- 识别精度、OCR、版面与公式工具选型：[references/recognition.md](references/recognition.md)
+- PDF 识别/OCR/公式识别工具与 GitHub 项目（可按需克隆到 `references/github/`）：[references/toolchain.md](references/toolchain.md)
 - 菁优网题源检索与比对流程：[references/jyeoo-workflow.md](references/jyeoo-workflow.md)
 
 ## 红线要求（最容易踩的坑）
@@ -180,5 +257,7 @@ results.json 字段：
 3. 视觉识别的数字要复核（0/6、1/7、3/8、9/7），拿不准就放大再看。
 4. 原题官方答案也可能多值（"23或32"很常见），这也印证"多解正常"；与自算矛盾时做第三遍验算再下结论。
 5. 扫描版必须先 OCR，且 OCR 的数字每道题人工瞄一眼再把关。
-6. **改完任何脚本，先跑 `python scripts/run_regression.py`**，17 项全过再交付。
-7. `typo_scan.py` 与 `compare_answers.py` 的输出都只是**候选**：错字候选回图复核；盲解不一致一律先列🟠存疑复核，绝不直接判官方错。
+6. **改完任何脚本，先跑 `python scripts/run_regression.py`**（内置单栏+双栏+三栏样卷 35 项，零外部依赖），全过再交付；有私有样卷时再加 `--pdf` 跑黄金回归。
+7. **原题检索与差异只是"线索"**：`diff_question.py` 的"关键数字差异"也必须回图 + 看答案 + 第三来源复核；**绝不因与网上原题不同就直接判错**。
+8. **多栏卷必须检查 `column` 与裁剪图**：栏检测误判会导致题文/配图串栏，发现串栏立即 `--no-columns` 或人工设栏后重切。
+9. `typo_scan.py` 与 `compare_answers.py` 的输出都只是**候选**：错字候选回图复核；盲解不一致一律先列🟠存疑复核，绝不直接判官方错。

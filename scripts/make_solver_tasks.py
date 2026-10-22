@@ -45,8 +45,24 @@ def main():
     ap.add_argument("--per-task", type=int, default=8)
     args = ap.parse_args()
 
-    qs = json.load(open(args.questions, encoding="utf-8-sig"))
+    raw = json.load(open(args.questions, encoding="utf-8-sig"))
     os.makedirs(args.out, exist_ok=True)
+
+    # 去重：同题号重复出现（如卷末答案区未拆分、题号重排）只保留第一条
+    qs, seen, dropped = [], set(), []
+    for q in raw:
+        qno = q.get("qno")
+        if (not str(q.get("text", "")).strip()) or qno in seen:
+            dropped.append(qno)
+            continue
+        seen.add(qno)
+        qs.append(q)
+    if not qs:
+        print("没有可用的题目：questions.json 为空或缺少 text 字段")
+        sys.exit(2)
+    if dropped:
+        print(f"⚠ 跳过 {len(dropped)} 条重复/空白题目（题号: "
+              + ",".join(str(x) for x in dropped[:10]) + "）")
 
     index = []
     for t, i in enumerate(range(0, len(qs), args.per_task), 1):
