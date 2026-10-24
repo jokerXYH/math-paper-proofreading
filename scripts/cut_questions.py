@@ -278,13 +278,23 @@ def main():
                 bottom = col_bottom
             if bottom - top < 22:
                 continue
+            # 下一题之前若出现栏目标题（Part/题型/说明），裁剪与文本到此为止，
+            # 避免把下一节的标题带进本题小图
+            for l in lay["ordered"]:
+                if l["y0"] > top + 2 and l["y0"] < bottom - 2 \
+                        and SEC_RE.match(l["text"]) \
+                        and (col is None or l["col"] in (col, None)):
+                    bottom = l["y0"] - 4
+                    break
+            if bottom - top < 22:
+                continue
             reg = region_of(lay["lines"], lay["images"], top, bottom, cb, col)
             if reg is None:
                 continue
 
             x0, y0, x1, y1 = reg["rect"]
             clip = pymupdf.Rect(
-                max(cb[0] - 4, x0 - 10), max(0, y0 - 6),
+                max(0, min(cb[0] - 4, x0 - 10)), max(0, y0 - 6),
                 min(cb[1] + 4, x1 + 12), min(lay["h"], y1 + 8))
             name = crop_name(pno, a["qno"])
             doc[pno - 1].get_pixmap(dpi=args.dpi, clip=clip).save(

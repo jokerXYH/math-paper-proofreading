@@ -416,6 +416,32 @@ def main():
               "一致 3" in r.stdout and "不一致 0" in r.stdout,
               r.stdout[-400:])
 
+    # ---- 21) 审阅台按“页码+题号”匹配，避免同号错配 ----
+    page_pdf = os.path.join(OUT, "_sample", "same_qno_two_pages.pdf")
+    pd = pymupdf.open()
+    for text in ("5．计算 1+1．", "5．计算 2+2．"):
+        pg = pd.new_page(width=595, height=842)
+        pg.insert_text((60, 100), text, fontsize=12, fontname="china-s")
+    pd.save(page_pdf)
+    pd.close()
+    page_cut = os.path.join(OUT, "page_cut")
+    run([py, os.path.join(HERE, "cut_questions.py"), page_pdf, "-o", page_cut, "--dpi", "70"])
+    page_q = os.path.join(page_cut, "questions.json")
+    page_res = os.path.join(OUT, "page_results.json")
+    write_json(page_res, {"issues": [{"level": "error", "page": 2, "qno": "第5题",
+                                      "type": "测试", "desc": "第二页的5题"}]})
+    page_html = os.path.join(OUT, "page_review.html")
+    run([py, os.path.join(HERE, "make_review.py"), "--questions", page_q,
+         "--results", page_res, "-o", page_html])
+    html_src = open(page_html, encoding="utf-8").read() if os.path.exists(page_html) else ""
+    import re as _re
+    _m = _re.search(r'<script id="data" type="application/json">(.*?)</script>',
+                    html_src, _re.S)
+    review_data = json.loads(_m.group(1).replace("<\\/", "</")) if _m else {"questions": []}
+    st = {(q["page"], q["qno"]): q["status"] for q in review_data["questions"]}
+    check("21 审阅台按页码+题号匹配（同号不同页）",
+          st.get((1, 5)) == "unchecked" and st.get((2, 5)) == "error", str(st))
+
     # ---- 汇总 ----
     print("\n" + "=" * 60)
     fails = [n for n, ok, _ in results if ok is False]

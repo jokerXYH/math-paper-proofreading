@@ -3,7 +3,7 @@ name: math-paper-proofreading
 description: 校对初中/高中数学试卷的题目与答案（PDF/图片/DOCX，支持多栏版面与扫描版 OCR）。核心口径：题目允许改编，只查逻辑是否自洽/可解/图文一致；答案必须数学正确，用 SymPy + Math-Verify 做等价判定（分数/根式/解集/区间/方程解），再结合独立复算、程序验证与盲解交叉验证。产出红色批注版 PDF、单文件 HTML 审阅台（题目小图 + 原题线索 + 差异高亮 + 问题卡）和结论汇总表。当用户要求"检查题目""校对试卷""查错""核对答案""答案对不对""把错误圈出来/做批注"等数学试题检查场景时使用，尤其针对初高中数学、菁优网题源的试卷。
 license: MIT
 metadata:
-  version: 2.3.0
+  version: 2.3.1
   author: jokerXYH
   homepage: https://github.com/jokerXYH/math-paper-proofreading
 ---
@@ -34,7 +34,7 @@ metadata:
 ```bash
 python -c "import pymupdf, sys; print('pymupdf', pymupdf.__version__, sys.version)"  # 唯一必需依赖
 python scripts/validate_skill.py        # 结构/脚本/引用完整性自检
-python scripts/run_regression.py        # 40 项全流程自检（内置单栏+双栏+三栏样卷，零外部依赖）
+python scripts/run_regression.py        # 41 项全流程自检（内置单栏+双栏+三栏样卷，零外部依赖）
 ```
 
 - 缺 pymupdf：`pip install pymupdf`（或 `pip install -r requirements.txt`）。
@@ -51,7 +51,7 @@ python scripts/run_regression.py        # 40 项全流程自检（内置单栏+�
 
 ```
 Task Progress:
-- [ ] 0. 环境自检：validate_skill.py + run_regression.py（40 项全过）
+- [ ] 0. 环境自检：validate_skill.py + run_regression.py（41 项全过）
 - [ ] 1. 识别文档：prepare_input（图片/DOCX→PDF）→ OCR（扫描版）→ extract_pdf（文本+逐页图，栏感知）→ cut_questions（每题小图 + 答案区拆分）
 - [ ] 2. 判断模式：看 answers.json / 搜"答案/解析/参考答案"；无答案＝模式A，含答案＝模式B（答案分离在另一文件？先 align_answers.py 配对）
 - [ ] 3. 拆题建清单：题号、页码、栏、是否含答案、题型（cut_questions 输出）
@@ -265,7 +265,7 @@ results.json 字段：
 
 ## 速查与参考（一层引用）
 
-- 工具脚本（scripts/）：`prepare_input.py` 图片/DOCX→PDF｜`ocr_pdf.py` 扫描版 OCR｜`extract_pdf.py` 识别｜`cut_questions.py` 栏感知切题 + 答案区拆分｜`align_answers.py` 答案分离对齐｜`search_original.py` 原题检索｜`diff_question.py` 原题差异定位｜`make_review.py` HTML 审阅台｜`locate.py` 批注定位｜`draw_annotations.py` 批注生成（含三重检查）｜`make_report.py` 报告(md+HTML)｜`make_solver_tasks.py` 盲解任务｜`compare_answers.py` 盲解比对（含数学等价）｜`verify_answer.py` 答案等价判定｜`typo_scan.py` 错别字筛查｜`verify_examples.py` 验证模板｜`run_regression.py` 回归测试（40 项）｜`validate_skill.py` 结构自检｜`recognition.py` 栏检测/阅读顺序库
+- 工具脚本（scripts/）：`prepare_input.py` 图片/DOCX→PDF｜`ocr_pdf.py` 扫描版 OCR｜`extract_pdf.py` 识别｜`cut_questions.py` 栏感知切题 + 答案区拆分｜`align_answers.py` 答案分离对齐｜`search_original.py` 原题检索｜`diff_question.py` 原题差异定位｜`make_review.py` HTML 审阅台｜`locate.py` 批注定位｜`draw_annotations.py` 批注生成（含三重检查）｜`make_report.py` 报告(md+HTML)｜`make_solver_tasks.py` 盲解任务｜`compare_answers.py` 盲解比对（含数学等价）｜`verify_answer.py` 答案等价判定｜`typo_scan.py` 错别字筛查｜`verify_examples.py` 验证模板｜`run_regression.py` 回归测试（41 项）｜`validate_skill.py` 结构自检｜`recognition.py` 栏检测/阅读顺序库
 - 题目/答案错误完整清单与初中各模块易错点：[references/error-checklist.md](references/error-checklist.md)
 - 各题型核验配方（含可直接改的代码模板）：[references/verification-recipes.md](references/verification-recipes.md)
 - 识别精度、OCR、版面与公式工具选型：[references/recognition.md](references/recognition.md)
@@ -280,7 +280,7 @@ results.json 字段：
 3. 视觉识别的数字要复核（0/6、1/7、3/8、9/7），拿不准就放大再看。
 4. 原题官方答案也可能多值（"23或32"很常见），这也印证"多解正常"；与自算矛盾时做第三遍验算再下结论。
 5. 扫描版必须先 OCR，且 OCR 的数字每道题人工瞄一眼再把关。
-6. **改完任何脚本，先跑 `python scripts/run_regression.py`**（内置单栏+双栏+三栏样卷 40 项，零外部依赖），全过再交付；有私有样卷时再加 `--pdf` 跑黄金回归。
+6. **改完任何脚本，先跑 `python scripts/run_regression.py`**（内置单栏+双栏+三栏样卷 41 项，零外部依赖），全过再交付；有私有样卷时再加 `--pdf` 跑黄金回归。
 7. **原题检索与差异只是"参考"**：`diff_question.py` 的数字/条件差异必须**按本地题重算**，不能直接判错；题目改编是允许的。
 8. **答案必须过数学等价判定**：`verify_answer.py` / `compare_answers.py`；`same` 才算对，`uncertain`（近似值/无法解析）列🟠存疑，不能凭"看起来一样"。
 9. **多栏卷必须检查 `column` 与裁剪图**：栏检测误判会导致题文/配图串栏，发现串栏立即 `--no-columns` 或人工设栏后重切。

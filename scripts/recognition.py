@@ -184,26 +184,32 @@ def _gaps(intervals, min_gap):
 
 
 def reading_order(lines, depth=0):
-    """XY-cut 阅读顺序：先水平切（去页眉/通栏标题），再垂直切（分栏）。"""
+    """XY-cut 阅读顺序：优先按栏切，再按上下块切。"""
     if len(lines) <= 1 or depth > 6:
         return sorted(lines, key=lambda l: (round(l["y0"], 1), l["x0"]))
 
+    # 先尝试竖向栏缝：双栏/三栏必须整栏读完再读下一栏
+    vg = _gaps([(l["x0"], l["x1"]) for l in lines], MIN_COL_GAP)
+    for g0, g1 in sorted(vg, key=lambda g: g[1] - g[0], reverse=True):
+        left = [l for l in lines if l["x1"] <= g0 + 0.5]
+        right = [l for l in lines if l["x0"] >= g1 - 0.5]
+        if len(left) < 4 or len(right) < 4:
+            continue
+        ly = (min(l["y0"] for l in left), max(l["y1"] for l in left))
+        ry = (min(l["y0"] for l in right), max(l["y1"] for l in right))
+        overlap = min(ly[1], ry[1]) - max(ly[0], ry[0])
+        min_h = min(ly[1] - ly[0], ry[1] - ry[0])
+        if min_h <= 0 or overlap < 0.55 * min_h:
+            continue
+        return reading_order(left, depth + 1) + reading_order(right, depth + 1)
+
     hg = _gaps([(l["y0"], l["y1"]) for l in lines], MIN_ROW_GAP)
     if hg:
-        # 取最靠上且足够宽的横缝，保证标题/题组顺序
         cut = max(hg, key=lambda g: g[1] - g[0])[0]
         top = [l for l in lines if l["y1"] <= cut + 0.5]
         bot = [l for l in lines if l["y0"] >= cut - 0.5]
         if top and bot:
             return reading_order(top, depth + 1) + reading_order(bot, depth + 1)
-
-    vg = _gaps([(l["x0"], l["x1"]) for l in lines], MIN_COL_GAP)
-    if vg:
-        cut = max(vg, key=lambda g: g[1] - g[0])[0]
-        left = [l for l in lines if l["x1"] <= cut + 0.5]
-        right = [l for l in lines if l["x0"] >= cut - 0.5]
-        if left and right and len(left) + len(right) >= 0.6 * len(lines):
-            return reading_order(left, depth + 1) + reading_order(right, depth + 1)
 
     return sorted(lines, key=lambda l: (round(l["y0"], 1), l["x0"]))
 
@@ -224,6 +230,16 @@ def assign_columns(lines, columns):
             ov = max(0.0, min(l["x1"], c1) - max(l["x0"], c0))
             if ov > best_ov:
                 best, best_ov = i, ov
+        if best is None:
+            # 题号常写在栏缝里（如 x=296，右栏正文从 310 开始）：归到最近的一栏
+            cand = []
+            for i, (c0, c1) in enumerate(columns):
+                if l["x1"] <= c0 + 0.5 and c0 - l["x1"] <= 30:
+                    cand.append((c0 - l["x1"], i))
+                if l["x0"] >= c1 - 0.5 and l["x0"] - c1 <= 30:
+                    cand.append((l["x0"] - c1, i))
+            if cand:
+                best = min(cand)[1]
         l["col"] = best
 
 
@@ -269,15 +285,22 @@ def question_anchors(lines, columns):
             continue
         rest = t[m.end():].strip()
         if not rest:
-            nxt = lines[i + 1] if i + 1 < len(lines) else None
-            if nxt is None or nxt["col"] != col or nxt["y0"] - l["y1"] > 32:
-                continue
-            if SEC_RE.match(nxt["text"]):
-                continue
-            # 纯数字行只有在下一行是正文（中文/括号）时才算题号；
-            # 公式碎片（"5．" 下一行是 "m−1"）要排除
-            if not re.match(r"^[\u4e00-\u9fff（(]", nxt["text"].strip()):
-                continue
+            prev = lines[i - 1] if i > 0 else None
+            same_visual = bool(
+                prev and prev["col"] == col
+                and not (prev["y1"] < l["y0"] - 4 or prev["y0"] > l["y1"] + 4)
+                and prev["x0"] >= l["x1"] - 2)
+            if same_visual:
+                pass          # 题号与题干在同一视觉行，题干在题号右侧
+            else:
+                nxt = lines[i + 1] if i + 1 < len(lines) else None
+                if nxt is None or nxt["col"] != col or nxt["y0"] - l["y1"] > 32:
+                    continue
+                if SEC_RE.match(nxt["text"]):
+                    continue
+                # 纯数字行只有在下一行是正文（中文/括号/带圈序号）时才算题号
+                if not re.match(r"^[\u4e00-\u9fff（(①-⑳]", nxt["text"].strip()):
+                    continue
         else:
             # 答案里的"5．；"这类行不是题号
             if rest[0] in "；;，,。.、:：)）":

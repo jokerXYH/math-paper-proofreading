@@ -134,23 +134,36 @@ def merge(args):
         except Exception:
             sizes = {}
 
-    issues_by_q, global_issues = {}, []
+    issues_by_key, global_issues = {}, []
     for it in results.get("issues", []):
         k = first_int(it.get("qno"))
-        (issues_by_q.setdefault(k, []) if k else global_issues).append(it)
+        pg = it.get("page")
+        if k and pg:
+            issues_by_key.setdefault((int(pg), k), []).append(it)
+        elif k:
+            issues_by_key.setdefault((None, k), []).append(it)
+        else:
+            global_issues.append(it)
     verified_q = {first_int(v) for v in results.get("verified", []) if first_int(v)}
     diff_by_q = {(d.get("qid") or first_int(d.get("qno"))): d
                  for d in diff.get("items", [])}
+    # 找不到对应题目的 issue（如 X38、首页第五题）放到“全卷问题”，不要静默丢失
+    qkeys = {(q.get("page"), q.get("qno")) for q in qs}
+    qnos = {q.get("qno") for q in qs}
+    for key in list(issues_by_key):
+        pg, k = key
+        if (pg is not None and key not in qkeys) or (pg is None and k not in qnos):
+            global_issues.extend(issues_by_key.pop(key))
 
-    questions, used_issue, used_pass = [], set(), set()
+    questions, used_fallback, used_pass = [], set(), set()
     for idx, q in enumerate(qs):
         qno = q.get("qno")
         qid = q.get("qid") or f"P{q.get('page')}-{idx + 1:03d}"
-        issues = []
-        if qno not in used_issue:
-            issues = issues_by_q.get(qno, [])
-            if issues:
-                used_issue.add(qno)
+        # 先按 (页码, 题号) 精确匹配，避免“第5题”错配到同号的另一页
+        issues = issues_by_key.get((q.get("page"), qno), [])
+        if not issues and (None, qno) in issues_by_key and qno not in used_fallback:
+            issues = issues_by_key[(None, qno)]
+            used_fallback.add(qno)
         d = diff_by_q.get(qid) or diff_by_q.get(qno) or {}
         status = "unchecked"
         lv = [i.get("level") for i in issues]
@@ -433,6 +446,7 @@ function renderDetail(){
       </div>
       <div>
         <h4 style="margin:0 0 6px;font-size:12px;color:var(--muted)">识别文本（本地）</h4>
+        <div class="meta" style="margin:-2px 0 6px">PDF 文本层拼接，分数/根号可能错位；以左侧题目小图为准。</div>
         <div class="textbox">${esc(q.text||'（空）')}</div>
         ${q.text_full && q.text_full!==q.text ? `<details style="margin-top:8px"><summary class="meta" style="cursor:pointer">完整文本（含答案/解答）</summary><div class="textbox" style="margin-top:6px">${esc(q.text_full)}</div></details>`:''}
         ${q.issues&&q.issues.length?`<h4 style="margin:12px 0 4px;font-size:12px;color:var(--muted)">批注问题</h4>
